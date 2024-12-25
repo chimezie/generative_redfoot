@@ -9,3 +9,8 @@ the context as the program execution continues.  In this way, the language of th
 other LLM systems can handle the evaluation of the LM.  Currently, mlx is used to implement the model loading and inference.
 
 It depends on the PyYaml and click third-party Python libraries as well as mlx.
+
+It can be run this way, where `document.pdl` is a PDL file.
+```commandline
+python generative_redfoot.py document.pdl
+```
