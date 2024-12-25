@@ -1,4 +1,4 @@
-# generative_redfoot
+# Generative Redfoot
 A generative, conversational workflow and multi-agent system using PDL, Wordloom, and [mlx](https://github.com/ml-explore/mlx-examples/tree/main/llms)
 
 Takes a minimal [Prompt Declaration Language (PDL)](https://github.com/IBM/prompt-declaration-language) file and generates a finite state generative machine
