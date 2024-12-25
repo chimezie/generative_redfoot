@@ -8,7 +8,7 @@ It was mainly motivated by supporting this use case from the PDL documentation/p
 
 <img src="animated_chatbot.gif" alt="Animated GIF of PDL chatbot."/>
 
-The Model class can be extended and incorporated into how its dispatcher creates the objects from a PDL file to incorporate the functionality for evaluating 
+The Model class can be extended and incorporated into how a dispatcher creates the PDL Python objects from a PDL file to incorporate the functionality for evaluating 
 the prompts against the models specified in PDL using any accumulated conversational context, prompts, and generation parameters (sampling parameters, for example), 
 (optionally) updating the context as the program execution continues.  This is how mlx is used to implement the model loading and inference.
 
