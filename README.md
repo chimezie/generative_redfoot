@@ -50,3 +50,18 @@ Consider the earlier PDL document. It can be parsed into a PDL Program and "exec
 
 ```
 
+The model _parameters_ directive in PDL can be used to specify the following mlx generation parameters: **temperature**, **top_k**, **min_p**, **max_tokens**, and **top_p**:
+
+```yaml
+description: ...
+text:
+  - read:
+    message: |
+      What is your query?
+    contribute: [context]
+- model: .. model ..
+  parameters:
+    temperature: 0.6
+    min_p: .03
+    max_tokens: 200
+```
