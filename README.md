@@ -15,9 +15,7 @@ the prompts against the models specified in PDL using any accumulated conversati
 However, the language of the PDL file can be extended with additional custom functionality, and 
 other LLM systems can handle the evaluation.
 
-It depends on the PyYaml and click third-party Python libraries as well as mlx.
-
-It can be run this way, where `document.pdl` is a PDL file.
+It depends on the PyYaml and click third-party Python libraries as well as mlx and can be run this way, where `document.pdl` is a PDL file.
 ```commandline
 python generative_redfoot.py document.pdl
 ```
