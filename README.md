@@ -6,4 +6,6 @@ as Python objects for a subset of the PDL language.  These objects (the "program
 and incorporated into how its dispatcher creates the objects from a PDF file to incorporate the functionality for evaluating the prompts against the models 
 specified in PDL using any accumulated conversational context, prompts, and generation parameters (sampling parameters, for example), (optionally) updating
 the context as the program execution continues.  In this way, the language of the PDL file can be extended with additional custom functionality, and 
-the evaluation of the LM can be handled by other LLM systems than just mlx, which is how the model evaluation is implemented in this module.
+other LLM systems can handle the evaluation of the LM.  Currently, mlx is used to implement the model loading and inference.
+
+It depends on the PyYaml and click third-party Python libraries as well as mlx.
