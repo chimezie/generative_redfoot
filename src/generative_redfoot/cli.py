@@ -6,7 +6,7 @@ import re
 
 from .model import PDLModel, PDLProgram, ParseDispatcher
 from pyarrow.lib import Mapping
-from transformers import PretrainedTokenizer
+from transformers import PreTrainedTokenizer
 from typing import Tuple
 
 @click.command()
@@ -48,7 +48,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
         return predicted_grouped_propositions
 
     class MLXModelEvaluationBase(PDLModel):
-        def _get_model_and_tokenizer(self) -> Tuple[mx.Module, PretrainedTokenizer]:
+        def _get_model_and_tokenizer(self) -> Tuple[mx.Module, PreTrainedTokenizer]:
             eos_token = self.parameters.get("eos_token")
             if eos_token:
                 tokenizer_config = {"eos_token": eos_token}
