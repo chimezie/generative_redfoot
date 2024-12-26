@@ -21,7 +21,7 @@ from typing import Tuple
 def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl_file):
     from mlx_lm.utils import load, generate
     from mlx_lm.sample_utils import make_sampler, make_logits_processors
-    import mlx.core as mx
+    import mlx.nn as nn
 
     start_marker = '<s>'
     end_marker = '</s>'
@@ -48,7 +48,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
         return predicted_grouped_propositions
 
     class MLXModelEvaluationBase(PDLModel):
-        def _get_model_and_tokenizer(self) -> Tuple[mx.Module, PreTrainedTokenizer]:
+        def _get_model_and_tokenizer(self) -> Tuple[nn.Module, PreTrainedTokenizer]:
             eos_token = self.parameters.get("eos_token")
             if eos_token:
                 tokenizer_config = {"eos_token": eos_token}
