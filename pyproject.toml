@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=67.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "generative_redfoot"
+version = "0.0.1"
+dependencies = [
+    "pyaml",
+    "click",
+    "tqdm",
+    "ogbujipt",
+    "mlx",
+    "mlx-lm",
+    "pytest",
+    "transformers"
+]
+description = "A generative, conversational workflow and multi-agent system using PDL and mlx"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+keywords = []
+authors = [
+  { name = "Chimezie Ogbuji", email = "chimezie@gmail.com" }
+]
+
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+generative_redfoot = "generative_redfoot.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/chimezie/generative_redfoot"
+Repository = "https://github.com/chimezie/generative_redfoot"
+
+[project.optional-dependencies]
+gemma_aps  = ["nltk"]
