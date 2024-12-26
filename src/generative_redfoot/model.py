@@ -22,6 +22,7 @@ This current AI dev ops wave could lean alot from that previous one, circa dawn 
 import yaml
 import re
 from abc import ABC
+from ogbujipt import word_loom
 from typing import Iterable, Mapping, Dict
 
 UNTIL_PATTERN = re.compile(r"^\$\{\s*(?P<variable>[^\s]+)\s+==\s*'(?P<value>[^']+)'\s*\}")
@@ -59,6 +60,14 @@ text:
 
       Long text."""
 
+
+PDL3 = """
+description: program
+text:
+- read_from_wordloom:
+    loomfile: file.loom
+    items: "question answer"
+"""
 
 class PDLObject(ABC):
     pass
@@ -138,6 +147,39 @@ class PDLRead(PDLObject):
         if {"read", "message", "contribute"}.intersection(item):
             return PDLRead(item, program)
 
+class WorldLoomRead(PDLObject):
+    """
+    PDL blcck for creating data, content can be any kind of block
+
+    Example:
+        >>> p = PDLProgram(yaml.safe_load(PDL3))
+        >>> p.text[0]
+        Wordloom('question answer' from file.loom)
+
+    """
+
+    def __init__(self, pdl_block: Mapping, program: PDLObject):
+        self.program = program
+        self.loom_file = pdl_block["loomfile"]
+        self.language_items = pdl_block["items"]
+
+    def __repr__(self):
+        return f"Wordloom('{self.language_items}' from {self.loom_file})"
+
+    def execute(self, context: Dict, return_content: bool = False):
+        with open(self.loom_file, mode='rb') as fp:
+            loom = word_loom.load(fp)
+        items = self.language_items.split(' ')
+        print(f"Expanding {items} from {self.loom_file}")
+        content = '\n'.join([loom[name] for name in items])
+        context.setdefault('_', []).append({"role": "user", "content": content})
+        if return_content:
+            return content
+
+    @staticmethod
+    def dispatch_check(item: Mapping, program: PDLObject):
+        if "read_from_wordloom" in item:
+            return WorldLoomRead(item["read_from_wordloom"], program)
 
 class PDLRepeat(PDLObject):
     def __init__(self, content: Mapping, program):
@@ -212,7 +254,7 @@ class PDLVariableAssign(PDLObject):
             return PDLVariableAssign(item, program)
 
 class ParseDispatcher:
-    DISPATCH_RESOLUTION_ORDER = [PDLVariableAssign, PDLRead, PDLRepeat, PDLText, PDLModel]
+    DISPATCH_RESOLUTION_ORDER = [PDLVariableAssign, PDLRead, WorldLoomRead, PDLRepeat, PDLText, PDLModel]
 
     def handle(self, item: Mapping, program: PDLObject):
         if isinstance(item, str):

@@ -9,13 +9,16 @@ from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
 from typing import Tuple
 
+def truncate_long_text(text, max_length=75):
+    return (text[:max_length] + '..') if len(text) > max_length else text
+
 @click.command()
 @click.option('-t', '--temperature', default=1, type=float)
 @click.option('-rp', '--repetition-penalty', default=0, type=float,
               help='The penalty factor for repeating tokens (none if not used)')
 @click.option('--top_k', default=-1, type=int, help='Sampling top_k')
 @click.option('--max_tokens', default=800, type=int, help='Max tokens')
-@click.option('--min-p', default=-1, type=float, help='Sampling min-p')
+@click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
 @click.argument('pdl_file')
 def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl_file):
@@ -58,12 +61,16 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
 
         def generate(self, messages, tokenizer, model, verbose):
             prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            if verbose:
+                print(f"Using parameters: {self.parameters}")
+            logits_processor = make_logits_processors(repetition_penalty=self.parameters.get("repetition_penalty",
+                                                                                             repetition_penalty))
             return generate(model, tokenizer, prompt,
-                            max_tokens=self.parameters.get("max_tokens", 600),
+                            max_tokens=self.parameters.get("max_tokens", max_tokens),
                             sampler=make_sampler(temp=self.parameters.get("temperature", temperature),
                                                  min_p=self.parameters.get("min_p", min_p),
                                                  top_k=self.parameters.get("top_k", top_k)),
-                            logits_processors=make_logits_processors(repetition_penalty=repetition_penalty),
+                            logits_processors=logits_processor,
                             verbose=verbose), prompt
 
     class MLXModelEvaluation(MLXModelEvaluationBase):
@@ -106,12 +113,13 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
             model, tokenizer = self._get_model_and_tokenizer()
             msg = context["_"][-1].copy()
             assert msg["role"] == "assistant", "Last message must be from assistant to use APSModel"
-            msg["content"] = create_propositions_input(msg["content"])
-            msg["role"] = "user"
             if verbose:
-                print(f"Extracting individual facts, statements, and ideas from using ", msg)
+                print(f"Extracting individual facts, statements, and ideas from using ",
+                      truncate_long_text(msg["content"]))
             else:
                 print(f"Generating response ... ")
+            msg["content"] = create_propositions_input(msg["content"])
+            msg["role"] = "user"
             response, prompt = self.generate([msg], tokenizer, model, verbose=verbose)
             response = process_propositions_output(response)
             print(response)
