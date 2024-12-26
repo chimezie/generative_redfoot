@@ -94,11 +94,17 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
             elif verbose:
                 print("Discarding model response from subsequent executions")
 
+        @staticmethod
+        def dispatch_check(item: Mapping, program: PDLProgram):
+            if "model" in item:
+                return MLXModelEvaluation(item, program)
+
+
     class MLXAPSModel(MLXModelEvaluationBase):
         MODEL_KEY = "APSModel"
         def execute(self, context, return_content=False):
             model, tokenizer = self._get_model_and_tokenizer()
-            msg = context["-"][-1].copy()
+            msg = context["_"][-1].copy()
             assert msg["role"] == "assistant", "Last message must be from assistant to use APSModel"
             msg["content"] = create_propositions_input(msg["content"])
             msg["role"] = "user"
