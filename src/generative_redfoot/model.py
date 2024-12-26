@@ -168,10 +168,10 @@ class PDLModel(PDLObject):
     """
     Meant to be extended and for its execute method to be overridden for LLM evaluation
     """
-
+    MODEL_KEY = "model"
     def __init__(self, content: Mapping, program):
         self.program = program
-        self.model = content["model"]
+        self.model = content[self.MODEL_KEY]
         self.discard = content["discard"] if "discard" in content else False
         self.content = content
         self.input = self.program.dispatcher.handle(content["input"], self.program) if "input" in content else None

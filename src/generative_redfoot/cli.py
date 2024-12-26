@@ -95,6 +95,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
                 print("Discarding model response from subsequent executions")
 
     class MLXAPSModel(MLXModelEvaluationBase):
+        MODEL_KEY = "APSModel"
         def execute(self, context, return_content=False):
             model, tokenizer = self._get_model_and_tokenizer()
             msg = context["-"][-1].copy()
