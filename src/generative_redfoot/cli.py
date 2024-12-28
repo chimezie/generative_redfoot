@@ -20,7 +20,7 @@ def truncate_long_text(text, max_length=200):
 @click.option('--max_tokens', default=800, type=int, help='Max tokens')
 @click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
-@click.option("--variable", "-v", "variables", type=(str, int), multiple=True)
+@click.option("--variable", "-v", "variables", type=str, multiple=True)
 @click.argument('pdl_file')
 def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, variables, pdl_file):
     from mlx_lm.utils import load, generate
