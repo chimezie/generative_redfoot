@@ -20,7 +20,7 @@ def truncate_long_text(text, max_length=200):
 @click.option('--max_tokens', default=800, type=int, help='Max tokens')
 @click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
-@click.option("--variable", "-v", "variables", type=str, multiple=True)
+@click.option("--variables", "-v", "variables", type=(str, str),  multiple=True)
 @click.argument('pdl_file')
 def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, variables, pdl_file):
     from mlx_lm.utils import load, generate
@@ -122,6 +122,10 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
             if verbose:
                 print(f"Executing model: {self.model} using context {context} - (via mlx)-> >\n{response}")
             self._handle_execution_contribution(response, context)
+            if "context" not in self.contribute:
+                if verbose:
+                    print("Clearing context ...")
+                context["_"] = []
 
         @staticmethod
         def dispatch_check(item: Mapping, program: PDLProgram):
@@ -131,7 +135,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
 
     class MLXAPSModel(MLXModelEvaluationBase):
         MODEL_KEY = "APSModel"
-        def execute(self, context, return_content=False):
+        def execute(self, context, return_content=False, verbose=False):
             model, tokenizer = self._get_model_cache_and_tokenizer()
             msg = context["_"][-1].copy()
             if verbose:
@@ -144,6 +148,10 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
             response, prompt = self.generate([msg], tokenizer, model, verbose=verbose)
             response = process_propositions_output(response)
             self._handle_execution_contribution(response, context)
+            if "context" not in self.contribute:
+                if verbose:
+                    print("Clearing context ...")
+                context["_"] = []
 
         @staticmethod
         def dispatch_check(item: Mapping, program: PDLProgram):

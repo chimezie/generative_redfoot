@@ -33,7 +33,7 @@ def pretty_print_list(my_list, sep=", ", and_char=", & "):
 
 
 UNTIL_PATTERN = re.compile(r"^\$\{\s*(?P<variable>[^\s]+)\s+==\s*'(?P<value>[^']+)'\s*\}")
-VAR_REFERENCE_PATTERN  = re.compile(r"^\$\{\s*(?P<variable>[^\s]+)\s*\}")
+VAR_REFERENCE_PATTERN  = re.compile(r"^\$(?P<variable>[^\s]+)\s*$")
 
 PDL = """
 description: chatbot
@@ -222,7 +222,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
             if isinstance(item, str):
                 content +=  item
             else:
-                result = item.execute(context)
+                result = item.execute(context, verbose=verbose)
                 if result is not None:
                     content += result
         merged_context = []
@@ -245,7 +245,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
 class PDLRead(PDLObject, PDLStructuredBlock):
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
-        self.read_from = pdl_block["read"].strip() if pdl_block["read"] else None
+        self.read_from = pdl_block["read"] if pdl_block["read"] else None
         self._get_common_attributes(pdl_block)
         if not self.read_from:
             self.message = pdl_block["message"]
@@ -260,10 +260,10 @@ class PDLRead(PDLObject, PDLStructuredBlock):
             return f"PDLRead( from '{self.read_from}' [{self.descriptive_text()}])"
 
     def execute(self, context: Dict, verbose: bool = False):
-        if self.read_from:
-            var_referemce_groups = VAR_REFERENCE_PATTERN.match(self.read_from)
-            if var_referemce_groups:
-                variable_name = var_referemce_groups.group('variable')
+        if self.read_from and isinstance(self.read_from, dict):
+            var_reference_group = VAR_REFERENCE_PATTERN.match(list(self.read_from)[0])
+            if var_reference_group:
+                variable_name = var_reference_group.group('variable')
                 file_name = context[variable_name]
             else:
                 file_name = self.read_from
