@@ -23,7 +23,7 @@ import yaml
 import re
 from abc import ABC
 from ogbujipt import word_loom
-from typing import Mapping, Dict, Any, Optional
+from typing import Mapping, Dict, Any, Optional, Union
 
 def pretty_print_list(my_list, sep=", ", and_char=", & "):
     return and_char.join([sep.join(my_list[:-1]), my_list[-1]]) if len(my_list) > 2 else '{} and {}'.format(
@@ -72,6 +72,7 @@ text:
 
 PDL3 = """
 description: program
+cache: prompt_cache.safetensors
 text:
 - read_from_wordloom: file.loom
   items: "question answer"
@@ -223,6 +224,16 @@ class PDLText(TextCollator, PDLStructuredBlock):
                 result = item.execute(context)
                 if result is not None:
                     content += result
+        merged_context = []
+        previous_item = None
+        for idx, item in enumerate(context.get("_", [])):
+            if idx > 0 and item["role"] == previous_item["role"]:
+                previous_item["content"] += item["content"]
+            else:
+                merged_context.append(item)
+                previous_item = item
+        context["_"] = merged_context
+
         self._handle_execution_contribution(content, context)
 
     @staticmethod
@@ -274,6 +285,8 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
 
     Example:
         >>> p = PDLProgram(yaml.safe_load(PDL3))
+        >>> p.cache
+        'prompt_cache.safetensors'
         >>> p.text[0]
         Wordloom('question answer' from file.loom [outputs to context as user])
 
@@ -294,8 +307,31 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         items = self.language_items.split(' ')
         if verbose:
             print(f"Expanding {items} from {self.loom_file}")
-        content = '\n'.join([loom[name] for name in items])
+        content = '\n'.join([self.get_loom_entry(loom[name], context) for name in items])
         self._handle_execution_contribution(content, context)
+
+    def get_loom_entry(self, loom_entry:word_loom.language_item , context: Mapping) \
+            -> Union[str, word_loom]:
+        """
+        Processes a language_item by formatting it with context-specific marker substitutions
+        if markers are present in the language_item. If no markers are available, the original
+        language_item is returned as is.
+
+        :param loom_entry: A wordloom `language_item` object that contains potential markers to be
+                           substituted and formatted with values from the context.
+        :param context: A dictionary-like object (`Mapping`) that holds marker-to-value
+                        mappings to be used for substitutions in the given loom_entry.
+        :return: Returns a formatted string if markers are found and substitutions can be
+                 applied; otherwise, returns the unprocessed `language_item` as is.
+
+        """
+        if loom_entry.markers:
+            marker_kwargs = {}
+            for marker in loom_entry.markers:
+                marker_kwargs[marker] = context[marker]
+            return loom_entry.format(**marker_kwargs)
+        else:
+            return loom_entry
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -429,19 +465,21 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
         >>> program.evaluation_environment
         {'_': [{'role': 'assistant', 'content': '.. model response ..'}]}
     """
-
-    def __init__(self, pdl: dict, dispatcher: ParseDispatcher = None):
+    INTERNAL_CACHE_NAME = "*"
+    def __init__(self, pdl: dict, dispatcher: ParseDispatcher = None, initial_context: Dict = None):
         if dispatcher is None:
             self.dispatcher = ParseDispatcher()
         else:
             self.dispatcher = dispatcher
         self.text = PDLText(pdl, self)
-        self.evaluation_environment = {}
+        self.cache = pdl.get("cache")
         self._get_common_attributes(pdl)
+        self.evaluation_environment = initial_context if initial_context else {}
 
     def __repr__(self):
         program_state = self.evaluation_environment if self.evaluation_environment else 'unexecuted'
-        return f"PDLProgram('{self.description}'\n\t{self.text}\n\t{program_state})"
+        caching_info = f" [caching to {self.cache}]" if self.cache else ""
+        return f"PDLProgram('{self.description}'\n\t{self.text}\n\t{program_state}{caching_info})"
 
     def execute(self, verbose: bool = False):
         if verbose:

@@ -9,7 +9,7 @@ from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
 from typing import Tuple, Dict, List
 
-def truncate_long_text(text, max_length=75):
+def truncate_long_text(text, max_length=200):
     return (text[:max_length] + '..') if len(text) > max_length else text
 
 @click.command()
@@ -20,11 +20,13 @@ def truncate_long_text(text, max_length=75):
 @click.option('--max_tokens', default=800, type=int, help='Max tokens')
 @click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
+@click.option("--variable", "-v", "variables", type=(str, int), multiple=True)
 @click.argument('pdl_file')
-def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl_file):
+def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, variables, pdl_file):
     from mlx_lm.utils import load, generate
     from mlx_lm.sample_utils import make_sampler, make_logits_processors
     import mlx.nn as nn
+    from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache, save_prompt_cache
 
     start_marker = '<s>'
     end_marker = '</s>'
@@ -51,18 +53,25 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
         return predicted_grouped_propositions
 
     class MLXModelEvaluationBase(PDLModel):
-        def _get_model_and_tokenizer(self) -> Tuple[nn.Module, PreTrainedTokenizer]:
+        def _get_model_cache_and_tokenizer(self) -> Tuple[nn.Module, PreTrainedTokenizer]:
             eos_token = self.parameters.get("eos_token")
             if eos_token:
                 tokenizer_config = {"eos_token": eos_token}
             else:
                 tokenizer_config = {}
-            return load(self.model, tokenizer_config=tokenizer_config)
+            model, tokenizer = load(self.model, tokenizer_config=tokenizer_config)
+            if self.program.cache:
+                if isinstance(self.program.cache, str):
+                    self.program.cache = (make_prompt_cache(model)
+                                          if self.program.cache == PDLProgram.INTERNAL_CACHE_NAME else
+                                          load_prompt_cache(self.program.cache))
+            return model, tokenizer
 
         def generate(self, messages, tokenizer, model, verbose):
             prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             if verbose:
-                print(f"Using parameters: {self.parameters}")
+                cache_info = f" and cache" if self.program.cache else ""
+                print(f"Using parameters: {self.parameters}{cache_info}")
             logits_processor = make_logits_processors(repetition_penalty=self.parameters.get("repetition_penalty",
                                                                                              repetition_penalty))
             return generate(model, tokenizer, prompt,
@@ -71,7 +80,8 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
                                                  min_p=self.parameters.get("min_p", min_p),
                                                  top_k=self.parameters.get("top_k", top_k)),
                             logits_processors=logits_processor,
-                            verbose=verbose), prompt
+                            verbose=verbose,
+                            prompt_cache=self.program.cache), prompt
 
     class MLXModelEvaluation(MLXModelEvaluationBase):
         def _insert_cot_messages(self, messages: List[Dict], cot_prefix: List[Dict]):
@@ -90,7 +100,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
             return messages
 
         def execute(self, context: Dict, verbose: bool = False):
-            model, tokenizer = self._get_model_and_tokenizer()
+            model, tokenizer = self._get_model_cache_and_tokenizer()
             messages = []
             if self.input:
                 self.input.execute(context, verbose=verbose)
@@ -122,9 +132,8 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
     class MLXAPSModel(MLXModelEvaluationBase):
         MODEL_KEY = "APSModel"
         def execute(self, context, return_content=False):
-            model, tokenizer = self._get_model_and_tokenizer()
+            model, tokenizer = self._get_model_cache_and_tokenizer()
             msg = context["_"][-1].copy()
-            assert msg["role"] == "assistant", "Last message must be from assistant to use APSModel"
             if verbose:
                 print(f"Extracting individual facts, statements, and ideas from using ",
                       truncate_long_text(msg["content"]))
@@ -145,8 +154,8 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
     dispatcher.DISPATCH_RESOLUTION_ORDER[-1] = MLXModelEvaluation
     dispatcher.DISPATCH_RESOLUTION_ORDER.append(MLXAPSModel)
     with open(pdl_file, "r") as file:
-        program = PDLProgram(yaml.safe_load(file), dispatcher=dispatcher)
-        program.execute()
+        program = PDLProgram(yaml.safe_load(file), dispatcher=dispatcher, initial_context=dict(variables))
+        program.execute(verbose=verbose)
         if verbose:
             print(program.evaluation_environment)
 if __name__ == '__main__':
