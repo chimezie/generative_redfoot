@@ -23,7 +23,8 @@ import yaml
 import re
 from abc import ABC
 from ogbujipt import word_loom
-from typing import Mapping, Dict, Any, Optional, Union
+from typing import Mapping, Dict, Any, Optional, Union, List
+from pprint import pprint
 
 def pretty_print_list(my_list, sep=", ", and_char=", & "):
     return and_char.join([sep.join(my_list[:-1]), my_list[-1]]) if len(my_list) > 2 else '{} and {}'.format(
@@ -134,11 +135,11 @@ class PDLStructuredBlock:
         self.description = item.get("description")
         self.defs = {k:v for k,v in item.get("defs", {}).items()}
 
-    def _handle_execution_contribution(self, content: str, context: Dict):
+    def _handle_execution_contribution(self, content: Union[List, str], context: Dict):
         if content:
             msg = {"role": self.role, "content": content}
             if "result" in self.contribute:
-                print(content)
+                pprint(content)
             if "context" in self.contribute:
                 context.setdefault('_', []).append(msg)
 
@@ -307,11 +308,11 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         items = self.language_items.split(' ')
         if verbose:
             print(f"Expanding {items} from {self.loom_file}")
-        content = '\n'.join([self.get_loom_entry(loom[name], context) for name in items])
+        content = '\n'.join([WorldLoomRead.get_loom_entry(loom[name], context) for name in items])
         self._handle_execution_contribution(content, context)
 
-    def get_loom_entry(self, loom_entry:word_loom.language_item , context: Mapping) \
-            -> Union[str, word_loom]:
+    @staticmethod
+    def get_loom_entry(loom_entry:word_loom.language_item, context: Mapping) -> Union[str, word_loom]:
         """
         Processes a language_item by formatting it with context-specific marker substitutions
         if markers are present in the language_item. If no markers are available, the original
