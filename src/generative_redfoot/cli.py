@@ -4,10 +4,10 @@ import yaml
 import json
 import re
 
-from .model import PDLModel, PDLProgram, ParseDispatcher
+from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher
 from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
-from typing import Tuple
+from typing import Tuple, Dict, List
 
 def truncate_long_text(text, max_length=75):
     return (text[:max_length] + '..') if len(text) > max_length else text
@@ -74,32 +74,44 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
                             verbose=verbose), prompt
 
     class MLXModelEvaluation(MLXModelEvaluationBase):
-        def execute(self, context, return_content=False):
+        def _insert_cot_messages(self, messages: List[Dict], cot_prefix: List[Dict]):
+            """
+            Modifies LLM messaging with a chain-of-thought (COT) prefix after any system message.
+
+            :param messages: List of message dictionaries where each dictionary contains keys like
+                'role' or 'content' and other relevant items for message processing.
+            :param cot_prefix: Chain-of-thought (COT) prefix, provided as a list of dictionaries
+                that serve as the preparatory context/instructions to be inserted into the message
+                list,  when the first item in `messages` is associated with the 'system' role.
+            :return: Updated `messages` list with the COT prefix properly inserted when applicable.
+            """
+            idx = 1 if messages[0]['role'] == 'system' else 0
+            messages[idx:idx] = cot_prefix
+            return messages
+
+        def execute(self, context: Dict, verbose: bool = False):
             model, tokenizer = self._get_model_and_tokenizer()
             messages = []
+            if self.input:
+                self.input.execute(context, verbose=verbose)
+            messages.extend(context["_"])
             if self.cot_prefix:
                 print(f"### Adding Chain-of Thought Few Shot examples specified in {self.cot_prefix} ###")
                 with open(self.cot_prefix, 'r') as cot_content:
-                    messages = json.load(cot_content)
+                    self._insert_cot_messages(messages, json.load(cot_content))
 
-            if self.input:
-                messages.append({"role": "user", "content": self.input.execute(context, return_content=True)})
-            else:
-                messages.extend(context["_"])
             if verbose:
-                print(f"Generating response using ", messages, self.program)
+                from pprint import pprint
+                print(f"Generating response using ..")
+                pprint([{k: v if k == "role" else truncate_long_text(v)} for i in messages for k,v in i.items()])
             else:
                 print(f"Generating response ... ")
             response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
-            if not verbose:
-                print(response)
+            # if not verbose:
+            #     print(response)
             if verbose:
                 print(f"Executing model: {self.model} using context {context} - (via mlx)-> >\n{response}")
-            if not self.discard:
-                context.setdefault('_', []).extend([{"role": "user", "content": prompt},
-                                                    {"role": "assistant", "content": response}])
-            elif verbose:
-                print("Discarding model response from subsequent executions")
+            self._handle_execution_contribution(response, context)
 
         @staticmethod
         def dispatch_check(item: Mapping, program: PDLProgram):
@@ -122,12 +134,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, pdl
             msg["role"] = "user"
             response, prompt = self.generate([msg], tokenizer, model, verbose=verbose)
             response = process_propositions_output(response)
-            print(response)
-            if not self.discard:
-                context.setdefault('_', []).extend([{"role": "user", "content": prompt},
-                                                    {"role": "assistant", "content": response}])
-            elif verbose:
-                print("Discarding model response from subsequent executions")
+            self._handle_execution_contribution(response, context)
 
         @staticmethod
         def dispatch_check(item: Mapping, program: PDLProgram):
