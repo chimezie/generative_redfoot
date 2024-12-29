@@ -282,7 +282,7 @@ class PDLRead(PDLObject, PDLStructuredBlock):
 
 class WorldLoomRead(PDLObject, PDLStructuredBlock):
     """
-    PDL blcck for reading sections for a prompt from a Worldloom (TOML / YAML) file using ogbujipt.word_loom
+    PDL block for reading sections for a prompt from a Worldloom (TOML / YAML) file using ogbujipt.word_loom
 
     Example:
         >>> p = PDLProgram(yaml.safe_load(PDL3))
