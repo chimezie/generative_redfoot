@@ -34,7 +34,7 @@ Options:
 generative_redfoot.py document.pdl
 ```
 
-The main argument is a PDL document, possibly with extensions of the language implemneted by generative_redfoot.
+The main argument is a PDL document, possibly with extensions of the language implemented by generative_redfoot.
 
 You can also specify default values for sampling parameters for the LLM calls during the execution of the programs
 using mlx.
