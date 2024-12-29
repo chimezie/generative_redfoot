@@ -57,9 +57,10 @@ text:
 
 Below is an example showing a PDL file constructing message contexts for prompts to chained LLM calls from fragments
 in a [Wordloom](https://github.com/OoriData/OgbujiPT/wiki/Word-Loom%3A-Format-%26-tools-for-managing-natural-language-for-AI-LLMs) 
-library, providing a clean separation of concerns between prompt language management prompt construction, and 
+library, providing a clean separation of concerns between prompt language management, prompt construction, and 
 LLM workflow management and orchestration.  The keys in the YAML file in black use the PDL language.  Those in
-red are extensions showing in order of appearance: (mlx) prefix caching, reading from a wordloom file, using Google's
-__google/gemma-7b-aps-it__ model to extract propositions from LLM output, etc.:
+red are generative_redfoot extensions shown in order of appearance: (mlx) prefix caching, COT few-shot loading, 
+reading from a wordloom file, using Google's __google/gemma-7b-aps-it__ model to extract propositions from LLM output, 
+etc.:
 
 <img src="complex_pdl.png" alt="Animated GIF of PDL chatbot."/>
