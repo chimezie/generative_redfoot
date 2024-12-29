@@ -17,38 +17,27 @@ other LLM systems can handle the evaluation.
 
 It depends on the PyYaml and click third-party Python libraries as well as mlx and can be run this way, where `document.pdl` is a PDL file.
 ```commandline
-python generative_redfoot.py document.pdl
+% Usage: generative_redfoot [OPTIONS] PDL_FILE
+
+Options:
+  -t, --temperature FLOAT
+  -rp, --repetition-penalty FLOAT
+                                  The penalty factor for repeating tokens
+                                  (none if not used)
+  --top_k INTEGER                 Sampling top_k
+  --max_tokens INTEGER            Max tokens
+  --min-p FLOAT                   Sampling min-p
+  --verbose / --no-verbose
+  -v, --variables <TEXT TEXT>...
+  --help                          Show this message and exit.
+
+generative_redfoot.py document.pdl
 ```
 
-It can also be used programmatically, re-using the examples from its Docstring tests:
+The main argument is a PDL document, possibly with extensions of the language implemneted by generative_redfoot.
 
-Consider the earlier PDL document. It can be parsed into a PDL Program and "executed"
-
-```python
-        >>> program = PDLProgram(yaml.safe_load(PDL))
-        >>> print(program.text.content[0])
-        PDLRead('What is your query? ' -> ['context'])
-        >>> print(len(program.text.content))
-        2
-        >>> print(type(program.text[1]))
-        <class 'generative_redfoot.PDLRepeat'>
-        >>> print(type(program.text[1].body))
-        <class 'generative_redfoot.PDLText'>
-
-        >>> print(len(program.text[1].body))
-        2
-        >>> print(program.text[1][0])
-        PDLModel(google/gemma-2-9b-it)
-        >>> print(program.text[1][1])
-        PDLVariableAssign(PDLRead('Enter a query or say 'quit' to exit' -> ['context']) -> $question)
-        >>> print(program.text[1].until)
-        ${ question == 'quit' }
-
-        >>> context = {}
-        >>> program.execute({})
-
-
-```
+You can also specify default values for sampling parameters for the LLM calls during the execution of the programs
+using mlx.
 
 The model _parameters_ directive in PDL can be used to specify the following mlx generation parameters: **temperature**, **top_k**, **min_p**, **max_tokens**, and **top_p**:
 
@@ -65,3 +54,12 @@ text:
     min_p: .03
     max_tokens: 200
 ```
+
+Below is an example showing a PDL file constructing message contexts for prompts to chained LLM calls from fragments
+in a [Wordloom](https://github.com/OoriData/OgbujiPT/wiki/Word-Loom%3A-Format-%26-tools-for-managing-natural-language-for-AI-LLMs) 
+library, providing a clean separation of concerns between prompt language management prompt construction, and 
+LLM workflow management and orchestration.  The keys in the YAML file in black use the PDL language.  Those in
+red are extensions showing in order of appearance: (mlx) prefix caching, reading from a wordloom file, using Google's
+__google/gemma-7b-aps-it__ model to extract propositions from LLM output, etc.:
+
+<img src="complex_pdl.png" alt="Animated GIF of PDL chatbot."/>
