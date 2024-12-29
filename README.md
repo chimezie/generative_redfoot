@@ -60,7 +60,8 @@ in a [Wordloom](https://github.com/OoriData/OgbujiPT/wiki/Word-Loom%3A-Format-%2
 library, providing a clean separation of concerns between prompt language management, prompt construction, and 
 LLM workflow management and orchestration.  The keys in the YAML file in black use the PDL language.  Those in
 red are generative_redfoot extensions shown in order of appearance: (mlx) prefix caching, COT few-shot loading, 
-reading from a wordloom file, using Google's __google/gemma-7b-aps-it__ model to extract propositions from LLM output, 
+reading from a wordloom file, using Google's [__google/gemma-7b-aps-it__](https://huggingface.co/google/gemma-7b-aps-it) 
+model to perform ["abstractive proposition segmentation"](https://arxiv.org/abs/2406.19803) from LLM output, 
 etc.:
 
 <img src="complex_pdl.png" alt="Animated GIF of PDL chatbot."/>
