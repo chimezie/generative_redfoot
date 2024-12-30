@@ -22,7 +22,6 @@ This current AI dev ops wave could lean alot from that previous one, circa dawn 
 import yaml
 import re
 from abc import ABC
-from ogbujipt import word_loom
 from typing import Mapping, Dict, Any, Optional, Union, List
 from pprint import pprint
 
@@ -303,6 +302,7 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         return f"Wordloom('{self.language_items}' from {self.loom_file} [{self.descriptive_text()}])"
 
     def execute(self, context: Dict, verbose: bool = False):
+        from ogbujipt import word_loom
         with open(self.loom_file, mode='rb') as fp:
             loom = word_loom.load(fp)
         items = self.language_items.split(' ')
@@ -401,6 +401,48 @@ class PDLModel(PDLObject, PDLStructuredBlock):
     def dispatch_check(item: Mapping, program: PDLObject) -> Optional[PDLObject]:
         if "model" in item:
             return PDLModel(item, program)
+
+class PDFRead(PDLObject, PDLStructuredBlock):
+    """
+    Class that handles PDF reading as part of the execution of a PDL program
+
+    Parses and extracts from PDF and contributes to the larger operational workflow
+     of the execution of a PDL program, leveraging PyPDF2 for the extraction.
+
+    """
+    def __init__(self, pdl_block: Mapping, program: PDLObject):
+        self.program = program
+        self.read_from = pdl_block["PDF_read"]
+        self._get_common_attributes(pdl_block)
+        if not self.read_from:
+            self.message = pdl_block["message"]
+            self.read_from = pdl_block["read"]
+        else:
+            self.message = None
+
+    def __repr__(self):
+        return f"PDFRead( from '{self.read_from}' [{self.descriptive_text()}])"
+
+    def execute(self, context: Dict, verbose: bool = False):
+        from PyPDF2 import PdfReader
+        if self.read_from and isinstance(self.read_from, dict):
+            var_reference_group = VAR_REFERENCE_PATTERN.match(list(self.read_from)[0])
+            if var_reference_group:
+                variable_name = var_reference_group.group('variable')
+                file_name = context[variable_name]
+            else:
+                file_name = self.read_from
+        else:
+            file_name = self.read_from
+        if verbose:
+            print(f"Reading {file_name} from context")
+        content = ''.join((page.extract_text() for page in PdfReader(file_name).pages))
+        self._handle_execution_contribution(content, context)
+
+    @staticmethod
+    def dispatch_check(item: Mapping, program: PDLObject):
+        if "PDF_read" in item:
+            return PDFRead(item, program)
 
 class ParseDispatcher:
     DISPATCH_RESOLUTION_ORDER = [PDLRead, WorldLoomRead, PDLRepeat, PDLText, PDLModel]
