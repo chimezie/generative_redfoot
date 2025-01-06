@@ -188,7 +188,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
 
         >>> p.execute(verbose=True)
         Executing: program
-        bar
+        'bar'
         >>> p.evaluation_environment
         {'_': [{'role': 'system', 'content': 'foo'}, {'role': 'user', 'content': 'bar'}]}
 
@@ -217,24 +217,37 @@ class PDLText(TextCollator, PDLStructuredBlock):
     def execute(self, context: Dict, verbose: bool = False):
         """"""
         content = ''
-        for item in self.content:
-            if isinstance(item, str):
-                content +=  item
-            else:
-                result = item.execute(context, verbose=verbose)
-                if result is not None:
-                    content += result
-        merged_context = []
-        previous_item = None
-        for idx, item in enumerate(context.get("_", [])):
-            if idx > 0 and item["role"] == previous_item["role"]:
-                previous_item["content"] += item["content"]
-            else:
-                merged_context.append(item)
-                previous_item = item
-        context["_"] = merged_context
-
+        if isinstance(self.content, str):
+            self.merge_content(context, self.content)
+            if "result" in self.contribute:
+                pprint(self.content)
+        else:
+            for item in self.content:
+                if isinstance(item, str):
+                    self.merge_content(context, item)
+                    if "result" in self.contribute:
+                        pprint(content)
+                else:
+                    result = item.execute(context, verbose=verbose)
+                    if result is not None:
+                        self.merge_content(context, result)
+            merged_context = []
+            previous_item = None
+            for idx, item in enumerate(context.get("_", [])):
+                if idx > 0 and item["role"] == previous_item["role"]:
+                    previous_item["content"] += item["content"]
+                else:
+                    merged_context.append(item)
+                    previous_item = item
+            context["_"] = merged_context
         self._handle_execution_contribution(content, context)
+
+    def merge_content(self, context, item):
+        messages = context.setdefault('_', [])
+        if messages and [m for m in messages if m['role'] == "user"]:
+            messages[-1]["content"] += item
+        else:
+            messages.append({"role": self.role, "content": item})
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -441,9 +454,8 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
         >>> program.text[0].parameters
         {'temperature': 0.6, 'min_p': 0.03, 'max_tokens': 600}
 
-        >>> program.execute(verbose=True)
-        Executing: program
-        .. model response ..
+        >>> program.execute()
+        '.. model response ..'
 
         >>> program.evaluation_environment
         {'_': [{'role': 'assistant', 'content': '.. model response ..'}]}

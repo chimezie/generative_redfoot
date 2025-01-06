@@ -4,15 +4,13 @@ import yaml
 import json
 import re
 
+from .utils import truncate_long_text
 from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead, PDLRepeat, PDLText, PDLRead
 from .extensions.wordloom import WorldLoomRead
 from .extensions.toolio import ToolioCompletion
 from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
 from typing import Tuple, Dict, List
-
-def truncate_long_text(text, max_length=200):
-    return (text[:max_length] + '..') if len(text) > max_length else text
 
 @click.command()
 @click.option('-t', '--temperature', default=1, type=float)
@@ -28,7 +26,7 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
     from mlx_lm.utils import load, generate
     from mlx_lm.sample_utils import make_sampler, make_logits_processors
     import mlx.nn as nn
-    from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache, save_prompt_cache
+    from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache
 
     start_marker = '<s>'
     end_marker = '</s>'
