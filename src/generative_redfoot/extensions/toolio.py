@@ -1,4 +1,5 @@
 from ..object_pdl_model import PDLObject, PDLStructuredBlock, PDLProgram
+from ..utils import truncate_messages
 import json
 from typing import Mapping, Dict
 import asyncio
@@ -40,6 +41,7 @@ class ToolioCompletion(PDLObject, PDLStructuredBlock):
         self.model = pdl_block["structured_output"]
         self.schema_file = pdl_block["schema_file"]
         self.max_tokens = pdl_block.get("max_tokens", 512)
+        self.temperature = pdl_block.get("temperature", .1)
         self.input = self.program.dispatcher.handle(pdl_block["input"], self.program) if "input" in pdl_block else None
         self._get_common_attributes(pdl_block)
 
@@ -51,8 +53,8 @@ class ToolioCompletion(PDLObject, PDLStructuredBlock):
         if self.input:
             source_phrase = f" from {self.input}"
         if verbose:
-            print(f"Running Toolio completion according to '{self.schema_file}', using {context}{source_phrase} and "
-                  f"up to {self.max_tokens:,} tokens)")
+            print(f"Running Toolio completion according to '{self.schema_file}', using {truncate_messages(context)}"
+                  f"{source_phrase} (max of {self.max_tokens:,} tokens)")
         if self.input:
             self.input.execute(context, verbose=verbose)
         asyncio.run(self.toolio_completion(context, verbose))
@@ -61,14 +63,13 @@ class ToolioCompletion(PDLObject, PDLStructuredBlock):
         from toolio.llm_helper import local_model_runner
         toolio_mm = local_model_runner(self.model)
         msgs = context["_"]
-        if verbose:
-            print(msgs)
-        # response, prompt = self.generate([msg], tokenizer, model, verbose=verbose)
 
         with open(self.schema_file, mode='r') as schema_file:
-            rt = await toolio_mm.complete(msgs, json_schema=schema_file.read(), max_tokens=512)
-            obj = json.loads(rt)
-        self._handle_execution_contribution(obj, context)
+            self._handle_execution_contribution(await toolio_mm.complete(msgs,
+                                                                         json_schema=schema_file.read(),
+                                                                         max_tokens=self.max_tokens,
+                                                                         temperature=self.temperature),
+                                                context)
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLProgram):
