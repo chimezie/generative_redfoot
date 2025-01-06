@@ -138,7 +138,7 @@ class PDLStructuredBlock:
         if content:
             msg = {"role": self.role, "content": content}
             if "result" in self.contribute:
-                pprint(content)
+                print(content)
             if "context" in self.contribute:
                 context.setdefault('_', []).append(msg)
 
