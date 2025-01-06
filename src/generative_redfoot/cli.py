@@ -4,7 +4,9 @@ import yaml
 import json
 import re
 
-from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead
+from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead, PDLRepeat, PDLText, PDLRead
+from .extensions.wordloom import WorldLoomRead
+from .extensions.toolio import ToolioCompletion
 from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
 from typing import Tuple, Dict, List
@@ -159,9 +161,8 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
                 return MLXAPSModel(item, program)
 
     dispatcher = ParseDispatcher()
-    dispatcher.DISPATCH_RESOLUTION_ORDER[-1] = MLXModelEvaluation
-    dispatcher.DISPATCH_RESOLUTION_ORDER.append(MLXAPSModel)
-    dispatcher.DISPATCH_RESOLUTION_ORDER.append(PDFRead)
+    dispatcher.DISPATCH_RESOLUTION_ORDER = [PDLRead, WorldLoomRead, ToolioCompletion, PDLRepeat, PDLText,
+                                            MLXModelEvaluation, MLXAPSModel, PDFRead]
     with open(pdl_file, "r") as file:
         program = PDLProgram(yaml.safe_load(file), dispatcher=dispatcher, initial_context=dict(variables))
         program.execute(verbose=verbose)
