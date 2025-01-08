@@ -39,6 +39,7 @@ class ToolioCompletion(PDLObject, PDLStructuredBlock):
     def __init__(self, pdl_block: Mapping, program: PDLProgram):
         self.program = program
         self.model = pdl_block["structured_output"]
+        self.insert_schema = pdl_block["insert_schema"]
         self.schema_file = pdl_block["schema_file"]
         self.max_tokens = pdl_block.get("max_tokens", 512)
         self.temperature = pdl_block.get("temperature", .1)
@@ -68,7 +69,8 @@ class ToolioCompletion(PDLObject, PDLStructuredBlock):
             self._handle_execution_contribution(await toolio_mm.complete(msgs,
                                                                          json_schema=schema_file.read(),
                                                                          max_tokens=self.max_tokens,
-                                                                         temperature=self.temperature),
+                                                                         temperature=self.temperature,
+                                                                         insert_schema=self.insert_schema),
                                                 context)
 
     @staticmethod
