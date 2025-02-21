@@ -10,7 +10,7 @@ It was mainly motivated by supporting this use case from the PDL documentation/p
 
 The Model class can be extended and incorporated into how a dispatcher creates the PDL Python objects from a PDL file to incorporate the functionality for evaluating 
 the prompts against the models specified in PDL.  The evaluation manages accumulated conversational context, prompts, and generation parameters (sampling parameters, for example), 
-(optionally) updating the context as the program execution continues.  MLX is used to implement the model loading and inference.
+optionally updating the context as the program execution continues.  MLX is used to implement the model loading and inference.
 
 However, the language of the PDL file can be extended with additional custom functionality and 
 other LLM systems can handle the evaluation.
