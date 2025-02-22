@@ -1,5 +1,5 @@
 # Generative Redfoot
-A generative, conversational workflow and multi-agent system using PDL and [mlx](https://github.com/ml-explore/mlx-examples/tree/main/llms)
+A generative, conversational workflow and multi-agent system using PDL and [MLX](https://github.com/ml-explore/mlx-examples/tree/main/llms)
 
 Takes a minimal [Prompt Declaration Language (PDL)](https://github.com/IBM/prompt-declaration-language) file and generates a finite state generative machine
 as Python objects for a subset of the PDL language.  These objects (the "programs" in particular) can be executed. 
