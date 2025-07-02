@@ -336,7 +336,8 @@ class PDLModel(PDLObject, PDLStructuredBlock):
         self.content = content
         self.input = self.program.dispatcher.handle(content["input"], self.program) if "input" in content else None
         self.parameters = content["parameters"] if "parameters" in content else {}
-        self.cot_prefix = content["cot_prefix"] if "cot_prefix" in content else {}
+        self.alpha_one = content["alpha_one"] if "alpha_one" in content else {}
+        self.cot_prefix = content["cot_prefix"] if "cot_prefix" in content else None
         self._get_common_attributes(content)
 
     def __repr__(self):
