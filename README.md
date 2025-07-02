@@ -1,5 +1,5 @@
 # Generative Redfoot
-A generative, conversational workflow and multi-agent system using PDL and [MLX](https://github.com/ml-explore/mlx-examples/tree/main/llms)
+A generative, conversational workflow and multi-agent system using PDL and [mlx](https://github.com/ml-explore/mlx-examples/tree/main/llms)
 
 Takes a minimal [Prompt Declaration Language (PDL)](https://github.com/IBM/prompt-declaration-language) file and generates a finite state generative machine
 as Python objects for a subset of the PDL language.  These objects (the "programs" in particular) can be executed. 
@@ -9,15 +9,15 @@ It was mainly motivated by supporting this use case from the PDL documentation/p
 <img src="animated_chatbot.gif" alt="Animated GIF of PDL chatbot."/>
 
 The Model class can be extended and incorporated into how a dispatcher creates the PDL Python objects from a PDL file to incorporate the functionality for evaluating 
-the prompts against the models specified in PDL.  The evaluation manages accumulated conversational context, prompts, and generation parameters (sampling parameters, for example), 
-optionally updating the context as the program execution continues.  MLX is used to implement the model loading and inference.
+the prompts against the models specified in PDL.  This is done using any accumulated conversational context, prompts, and generation parameters (sampling parameters, for example), 
+(optionally) updating the context as the program execution continues and how mlx is used to implement the model loading and inference.
 
-However, the language of the PDL file can be extended with additional custom functionality and 
+However, the language of the PDL file can be extended with additional custom functionality, and 
 other LLM systems can handle the evaluation.
 
 ## Usage
 
-It depends on the PyYaml and click third-party Python libraries as well as MLX and can be run this way, where `document.pdl` is a PDL file.
+It depends on the PyYaml and click third-party Python libraries as well as mlx and can be run this way, where `document.pdl` is a PDL file.
 ```commandline
 % Usage: generative_redfoot [OPTIONS] PDL_FILE
 
@@ -37,12 +37,12 @@ Options:
 generative_redfoot.py document.pdl
 ```
 
-The main argument is a PDL document, possibly with extensions of the language implemented by generative_redfoot.
+The main argument is a PDL program (a YAML file), possibly with extensions of the language implemented by generative_redfoot.
 
 You can also specify default values for sampling parameters for the LLM calls during the execution of the programs
-using MLX.
+using mlx.
 
-The model _parameters_ directive in PDL can be used to specify the following MLX generation parameters: **temperature**, **top_k**, **min_p**, **max_tokens**, and **top_p**:
+The model _parameters_ directive in PDL can be used to specify the following mlx generation parameters: **temperature**, **top_k**, **min_p**, **max_tokens**, and **top_p**:
 
 ```yaml
 description: ...
