@@ -16,16 +16,17 @@ from typing import Tuple, Dict, List
 @click.option('-t', '--temperature', default=1, type=float)
 @click.option('-rp', '--repetition-penalty', default=0, type=float,
               help='The penalty factor for repeating tokens (none if not used)')
-@click.option('--top_k', default=-1, type=int, help='Sampling top_k')
-@click.option('--max_tokens', default=800, type=int, help='Max tokens')
+@click.option('--top-k', default=-1, type=int, help='Sampling top_k')
+@click.option('--top-p', default=0.95, type=int, help='Sampling top_p')
+@click.option('--max-tokens', default=800, type=int, help='Max tokens')
 @click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
 @click.option("--variables", "-v", "variables", type=(str, str),  multiple=True)
 @click.argument('pdl_file')
-def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, variables, pdl_file):
+def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbose, variables, pdl_file):
+    import mlx.nn as nn
     from mlx_lm.utils import load, generate
     from mlx_lm.sample_utils import make_sampler, make_logits_processors
-    import mlx.nn as nn
     from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache
 
     start_marker = '<s>'
@@ -109,16 +110,39 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
                 print(f"### Adding Chain-of Thought Few Shot examples specified in {self.cot_prefix} ###")
                 with open(self.cot_prefix, 'r') as cot_content:
                     self._insert_cot_messages(messages, json.load(cot_content))
-
             if verbose:
                 from pprint import pprint
                 print(f"Generating response using ..")
                 pprint([{k: v if k == "role" else truncate_long_text(v)} for i in messages for k,v in i.items()])
             else:
                 print(f"Generating response ... ")
-            response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
-            # if not verbose:
-            #     print(response)
+            if self.alpha_one:
+                from alpha_one_mlx.reasoner import alpha_one
+                from alpha_one_mlx.models import get_configuration
+
+                configuration = get_configuration(model.model_type)
+                alpha = self.alpha_one.get("alpha", 1.4)
+                threshold = int(max_tokens - alpha * self.alpha_one.get("thinking_token_length", 2650))
+                prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                wait_words = self.alpha_one.get("wait_words", configuration.slow_thinking_stop_words)
+                if verbose:
+                    print(f"Using parameters: {self.parameters}, {self.alpha_one}")
+
+                response = alpha_one(model, tokenizer, prompt,
+                                     configuration=configuration,
+                                     max_tokens_per_call=self.parameters.get("max_tokens", max_tokens),
+                                     threshold=threshold,
+                                     temperature=self.parameters.get("temperature", temperature),
+                                     top_p=self.parameters.get("top_k", top_k),
+                                     min_p=self.parameters.get("min_p", min_p),
+                                     top_k=self.parameters.get("top_p", top_p),
+                                     apply_chat_template=False,
+                                     verbose=verbose,
+                                     wait_words=wait_words,
+                                     prompt_cache=self.program.cache)
+
+            else:
+                response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
             if verbose:
                 print(f"Executing model: {self.model} using context {context} - (via mlx)-> >\n{response}")
             self._handle_execution_contribution(response, context)
