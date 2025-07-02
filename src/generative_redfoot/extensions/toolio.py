@@ -1,53 +1,22 @@
 import warnings
 
-from ..object_pdl_model import PDLObject, PDLStructuredBlock, PDLProgram
+from ..object_pdl_model import PDLObject, PDLStructuredBlock, PDLProgram, PDLModel
 from ..utils import truncate_messages
 import json
 from typing import Mapping, Dict, List
 import asyncio
 
-"""
-from toolio.llm_helper import local_model_runner
-toolio_mm = local_model_runner('..')
-
-async def [..]([..]):
-    prompt = [..]
-    done = False
-    msgs = [{'role': 'user', 'content': prompt}]
-    while not done:
-        rt = await tmm.complete(msgs, json_schema=[..], max_tokens=512)
-        obj = json.loads(rt)
-        # print('DEBUG return object:', obj)
-
-
-"""
-
-class ToolioCompletion(PDLObject, PDLStructuredBlock):
+class ToolioCompletion(PDLModel):
     """
     PDL block for structured LLM response generation via Toolio + MLX
 
-    from toolio.llm_helper import local_model_runner
-    toolio_mm = local_model_runner('..')
-
-    async def [..]([..]):
-        prompt = [..]
-        done = False
-        msgs = [{'role': 'user', 'content': prompt}]
-        while not done:
-            rt = await tmm.complete(msgs, json_schema=[..], max_tokens=512)
-            obj = json.loads(rt)
-            # print('DEBUG return object:', obj)
     """
-    def __init__(self, pdl_block: Mapping, program: PDLProgram):
-        self.program = program
-        self.model = pdl_block["structured_output"]
-        self.insert_schema = pdl_block["insert_schema"]
-        self.schema_file = pdl_block["schema_file"]
-        self.max_tokens = pdl_block.get("max_tokens", 512)
-        self.temperature = pdl_block.get("temperature", .1)
-        self.cot_prefix = pdl_block["cot_prefix"] if "cot_prefix" in pdl_block else None
-        self.input = self.program.dispatcher.handle(pdl_block["input"], self.program) if "input" in pdl_block else None
-        self._get_common_attributes(pdl_block)
+    MODEL_KEY = "structured_output"
+    def __init__(self, content: Mapping, program: PDLProgram):
+        super().__init__(content, program)
+        self.insert_schema = content["insert_schema"]
+        self.schema_file = content["schema_file"]
+        self.max_tokens = self.parameters.get("max_tokens", 256)
 
     def _insert_cot_messages(self, messages: List[Dict], cot_prefix: List[Dict]):
         """
@@ -96,7 +65,7 @@ class ToolioCompletion(PDLObject, PDLStructuredBlock):
             response = await toolio_mm.iter_complete(messages,
                                                      json_schema=schema_file.read(),
                                                      max_tokens=self.max_tokens,
-                                                     temperature=self.temperature,
+                                                     temperature=self.parameters.get("temperature", 0),
                                                      insert_schema=self.insert_schema,
                                                      full_response=True)
             self._handle_execution_contribution(response.first_choice_text, context)
