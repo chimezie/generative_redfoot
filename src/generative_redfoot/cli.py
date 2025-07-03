@@ -123,7 +123,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
 
                 configuration = get_configuration(model.model_type)
                 alpha = self.alpha_one.get("alpha", 1.4)
-                threshold = int(max_tokens - alpha * self.alpha_one.get("thinking_token_length", 2650))
+                threshold = int(max_tokens - alpha * self.alpha_one["thinking_token_length"])
                 prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 wait_words = self.alpha_one.get("wait_words", configuration.slow_thinking_stop_words)
                 if verbose:
