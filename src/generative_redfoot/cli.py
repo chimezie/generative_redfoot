@@ -25,7 +25,8 @@ from typing import Tuple, Dict, List
 @click.argument('pdl_file')
 def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbose, variables, pdl_file):
     import mlx.nn as nn
-    from mlx_lm.utils import load, generate
+    from mlx_lm.utils import load
+    from mlx_lm.generate import generate
     from mlx_lm.sample_utils import make_sampler, make_logits_processors
     from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache
 
