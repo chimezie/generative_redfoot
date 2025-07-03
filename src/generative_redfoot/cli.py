@@ -17,7 +17,7 @@ from typing import Tuple, Dict, List
 @click.option('-rp', '--repetition-penalty', default=0, type=float,
               help='The penalty factor for repeating tokens (none if not used)')
 @click.option('--top-k', default=-1, type=int, help='Sampling top_k')
-@click.option('--top-p', default=0.95, type=int, help='Sampling top_p')
+@click.option('--top-p', default=0.95, type=float, help='Sampling top_p')
 @click.option('--max-tokens', default=800, type=int, help='Max tokens')
 @click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
