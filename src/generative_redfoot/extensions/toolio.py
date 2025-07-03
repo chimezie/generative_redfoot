@@ -1,10 +1,12 @@
 import warnings
+import json
+import asyncio
 
 from ..object_pdl_model import PDLObject, PDLStructuredBlock, PDLProgram, PDLModel
 from ..utils import truncate_messages
-import json
+
 from typing import Mapping, Dict, List
-import asyncio
+from pathlib import Path
 
 class ToolioCompletion(PDLModel):
     """
@@ -41,17 +43,24 @@ class ToolioCompletion(PDLModel):
         if self.input:
             source_phrase = f" from {self.input}"
         if verbose:
-            messages = truncate_messages(context['_'])
+            messages = truncate_messages(context)
             print(f"Running Toolio completion according to '{self.schema_file}', using {messages}"
                   f"{source_phrase} (max of {self.max_tokens:,} tokens)")
-        if self.input:
+        if isinstance(self.input, str):
+            self.input
+        else:
             self.input.execute(context, verbose=verbose)
         asyncio.run(self.toolio_completion(context, verbose))
 
     async def toolio_completion(self, context: Dict, verbose: bool = False):
         from toolio.llm_helper import local_model_runner
         toolio_mm = local_model_runner(self.model)
-        messages = context["_"]
+        if verbose:
+            print(context)
+        if self.input:
+            messages = [{'role': 'user', 'content': self.input}]
+        else:
+            messages = context["_"]
 
         if self.cot_prefix:
             if verbose:
@@ -61,14 +70,17 @@ class ToolioCompletion(PDLModel):
         if self.program.cache:
             warnings.warn(f"Prompt cache ({self.program.cache}) not supported with Toolio")
 
-        with open(self.schema_file, mode='r') as schema_file:
-            response = await toolio_mm.iter_complete(messages,
-                                                     json_schema=schema_file.read(),
-                                                     max_tokens=self.max_tokens,
-                                                     temperature=self.parameters.get("temperature", 0),
-                                                     insert_schema=self.insert_schema,
-                                                     full_response=True)
-            self._handle_execution_contribution(response.first_choice_text, context)
+        if Path(self.schema_file).exists():
+            with open(self.schema_file, mode='r') as schema_file:
+                response = await toolio_mm.complete(messages,
+                                                    json_schema=schema_file.read(),
+                                                    max_tokens=self.max_tokens,
+                                                    temperature=self.parameters.get("temperature", 0),
+                                                    insert_schema=self.insert_schema,
+                                                    full_response=True)
+                self._handle_execution_contribution(response.first_choice_text, context)
+        else:
+            raise ValueError(f"Schema file '{self.schema_file}' does not exist")
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLProgram):
