@@ -91,12 +91,12 @@ description: structured_output
 text:
   - structured_output: mlx-community/Llama-3.2-3B-Instruct-4bit
     insert_schema: true
-    schema_file: algebra_tutor.schema.json
+    schema_file: ToolioGit/demo/algebra_tutor.schema.json
     parameters:
       temperature: 0.6
       max_tokens: 512
     input: |
-        solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#
+      solve 8x + 31 = 2. Your answer should be only JSON, according to this schema: #!JSON_SCHEMA!#"
 ```
 
 Beyond the approach above, its input can be specified in all the ways a PDL model can.
