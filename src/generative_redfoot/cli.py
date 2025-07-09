@@ -87,6 +87,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 draft_model, draft_tokenizer = load(self.draft_model)
                 if draft_tokenizer.vocab_size != tokenizer.vocab_size:
                     raise ValueError("Draft model tokenizer does not match model tokenizer.")
+                elif verbose:
+                    print(f"Using draft model: {draft_model}")
             return generate(model, tokenizer, prompt,
                             max_tokens=self.parameters.get("max_tokens", max_tokens),
                             sampler=make_sampler(temp=self.parameters.get("temperature", temperature),
@@ -146,6 +148,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                     draft_model, draft_tokenizer = load(self.draft_model)
                     if draft_tokenizer.vocab_size != tokenizer.vocab_size:
                         raise ValueError("Draft model tokenizer does not match model tokenizer.")
+                elif verbose:
+                    print(f"Using draft model: {draft_model}")
                 response = alpha_one(model, tokenizer, prompt,
                                      configuration=configuration,
                                      max_tokens_per_call=self.parameters.get("max_tokens", max_tokens),
