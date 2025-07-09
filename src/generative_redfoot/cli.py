@@ -146,7 +146,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                                      apply_chat_template=False,
                                      verbose=verbose,
                                      wait_words=wait_words,
-                                     prompt_cache=self.program.cache)
+                                     prompt_cache=self.program.cache,
+                                     draft_model=self.draft_model)
 
             else:
                 response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
