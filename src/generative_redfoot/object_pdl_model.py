@@ -339,9 +339,6 @@ class PDLModel(PDLObject, PDLStructuredBlock):
         self.alpha_one = content["alpha_one"] if "alpha_one" in content else {}
         if "draft_model" in content:
             self.draft_model = content["draft_model"]
-            draft_model, draft_tokenizer = load(self.draft_model)
-            if draft_tokenizer.vocab_size != tokenizer.vocab_size:
-                raise ValueError("Draft model tokenizer does not match model tokenizer.")
         else:
             self.draft_model = None
         self.cot_prefix = content["cot_prefix"] if "cot_prefix" in content else None
