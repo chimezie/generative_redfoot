@@ -4,29 +4,31 @@ import yaml
 import json
 import re
 
-from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead
+from .utils import truncate_long_text
+from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead, PDLRepeat, PDLText, PDLRead
+from .extensions.wordloom import WorldLoomRead
+from .extensions.toolio import ToolioCompletion
 from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
 from typing import Tuple, Dict, List
-
-def truncate_long_text(text, max_length=200):
-    return (text[:max_length] + '..') if len(text) > max_length else text
 
 @click.command()
 @click.option('-t', '--temperature', default=1, type=float)
 @click.option('-rp', '--repetition-penalty', default=0, type=float,
               help='The penalty factor for repeating tokens (none if not used)')
-@click.option('--top_k', default=-1, type=int, help='Sampling top_k')
-@click.option('--max_tokens', default=800, type=int, help='Max tokens')
+@click.option('--top-k', default=-1, type=int, help='Sampling top_k')
+@click.option('--top-p', default=0.95, type=float, help='Sampling top_p')
+@click.option('--max-tokens', default=800, type=int, help='Max tokens')
 @click.option('--min-p', default=0, type=float, help='Sampling min-p')
 @click.option('--verbose/--no-verbose', default=False)
 @click.option("--variables", "-v", "variables", type=(str, str),  multiple=True)
 @click.argument('pdl_file')
-def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, variables, pdl_file):
-    from mlx_lm.utils import load, generate
-    from mlx_lm.sample_utils import make_sampler, make_logits_processors
+def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbose, variables, pdl_file):
     import mlx.nn as nn
-    from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache, save_prompt_cache
+    from mlx_lm.utils import load
+    from mlx_lm.generate import generate
+    from mlx_lm.sample_utils import make_sampler, make_logits_processors
+    from mlx_lm.models.cache import load_prompt_cache, make_prompt_cache
 
     start_marker = '<s>'
     end_marker = '</s>'
@@ -109,16 +111,39 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
                 print(f"### Adding Chain-of Thought Few Shot examples specified in {self.cot_prefix} ###")
                 with open(self.cot_prefix, 'r') as cot_content:
                     self._insert_cot_messages(messages, json.load(cot_content))
-
             if verbose:
                 from pprint import pprint
                 print(f"Generating response using ..")
                 pprint([{k: v if k == "role" else truncate_long_text(v)} for i in messages for k,v in i.items()])
             else:
                 print(f"Generating response ... ")
-            response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
-            # if not verbose:
-            #     print(response)
+            if self.alpha_one:
+                from alpha_one_mlx.reasoner import alpha_one
+                from alpha_one_mlx.models import get_configuration
+
+                configuration = get_configuration(model.model_type)
+                alpha = self.alpha_one.get("alpha", 1.4)
+                threshold = int(max_tokens - alpha * self.alpha_one["thinking_token_length"])
+                prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+                wait_words = self.alpha_one.get("wait_words", configuration.slow_thinking_stop_words)
+                if verbose:
+                    print(f"Using parameters: {self.parameters}, {self.alpha_one}")
+
+                response = alpha_one(model, tokenizer, prompt,
+                                     configuration=configuration,
+                                     max_tokens_per_call=self.parameters.get("max_tokens", max_tokens),
+                                     threshold=threshold,
+                                     temperature=self.parameters.get("temperature", temperature),
+                                     top_p=self.parameters.get("top_p", top_p),
+                                     min_p=self.parameters.get("min_p", min_p),
+                                     top_k=self.parameters.get("top_k", top_k),
+                                     apply_chat_template=False,
+                                     verbose=verbose,
+                                     wait_words=wait_words,
+                                     prompt_cache=self.program.cache)
+
+            else:
+                response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
             if verbose:
                 print(f"Executing model: {self.model} using context {context} - (via mlx)-> >\n{response}")
             self._handle_execution_contribution(response, context)
@@ -159,9 +184,8 @@ def main(temperature, repetition_penalty, top_k, max_tokens, min_p, verbose, var
                 return MLXAPSModel(item, program)
 
     dispatcher = ParseDispatcher()
-    dispatcher.DISPATCH_RESOLUTION_ORDER[-1] = MLXModelEvaluation
-    dispatcher.DISPATCH_RESOLUTION_ORDER.append(MLXAPSModel)
-    dispatcher.DISPATCH_RESOLUTION_ORDER.append(PDFRead)
+    dispatcher.DISPATCH_RESOLUTION_ORDER = [PDLRead, WorldLoomRead, ToolioCompletion, PDLRepeat, PDLText,
+                                            MLXModelEvaluation, MLXAPSModel, PDFRead]
     with open(pdl_file, "r") as file:
         program = PDLProgram(yaml.safe_load(file), dispatcher=dispatcher, initial_context=dict(variables))
         program.execute(verbose=verbose)

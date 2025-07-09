@@ -138,7 +138,7 @@ class PDLStructuredBlock:
         if content:
             msg = {"role": self.role, "content": content}
             if "result" in self.contribute:
-                pprint(content)
+                print(content)
             if "context" in self.contribute:
                 context.setdefault('_', []).append(msg)
 
@@ -188,7 +188,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
 
         >>> p.execute(verbose=True)
         Executing: program
-        bar
+        'bar'
         >>> p.evaluation_environment
         {'_': [{'role': 'system', 'content': 'foo'}, {'role': 'user', 'content': 'bar'}]}
 
@@ -217,24 +217,37 @@ class PDLText(TextCollator, PDLStructuredBlock):
     def execute(self, context: Dict, verbose: bool = False):
         """"""
         content = ''
-        for item in self.content:
-            if isinstance(item, str):
-                content +=  item
-            else:
-                result = item.execute(context, verbose=verbose)
-                if result is not None:
-                    content += result
-        merged_context = []
-        previous_item = None
-        for idx, item in enumerate(context.get("_", [])):
-            if idx > 0 and item["role"] == previous_item["role"]:
-                previous_item["content"] += item["content"]
-            else:
-                merged_context.append(item)
-                previous_item = item
-        context["_"] = merged_context
-
+        if isinstance(self.content, str):
+            self.merge_content(context, self.content)
+            if "result" in self.contribute:
+                pprint(self.content)
+        else:
+            for item in self.content:
+                if isinstance(item, str):
+                    self.merge_content(context, item)
+                    if "result" in self.contribute:
+                        pprint(content)
+                else:
+                    result = item.execute(context, verbose=verbose)
+                    if result is not None:
+                        self.merge_content(context, result)
+            merged_context = []
+            previous_item = None
+            for idx, item in enumerate(context.get("_", [])):
+                if idx > 0 and item["role"] == previous_item["role"]:
+                    previous_item["content"] += item["content"]
+                else:
+                    merged_context.append(item)
+                    previous_item = item
+            context["_"] = merged_context
         self._handle_execution_contribution(content, context)
+
+    def merge_content(self, context, item):
+        messages = context.setdefault('_', [])
+        if messages and [m for m in messages if m['role'] == "user"]:
+            messages[-1]["content"] += item
+        else:
+            messages.append({"role": self.role, "content": item})
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -278,66 +291,6 @@ class PDLRead(PDLObject, PDLStructuredBlock):
     def dispatch_check(item: Mapping, program: PDLObject):
         if "read" in item:
             return PDLRead(item, program)
-
-class WorldLoomRead(PDLObject, PDLStructuredBlock):
-    """
-    PDL block for reading sections for a prompt from a Worldloom (TOML / YAML) file using ogbujipt.word_loom
-
-    Example:
-        >>> p = PDLProgram(yaml.safe_load(PDL3))
-        >>> p.cache
-        'prompt_cache.safetensors'
-        >>> p.text[0]
-        Wordloom('question answer' from file.loom [outputs to context as user])
-
-    """
-
-    def __init__(self, pdl_block: Mapping, program: PDLObject):
-        self.program = program
-        self.loom_file = pdl_block["read_from_wordloom"]
-        self.language_items = pdl_block["items"]
-        self._get_common_attributes(pdl_block)
-
-    def __repr__(self):
-        return f"Wordloom('{self.language_items}' from {self.loom_file} [{self.descriptive_text()}])"
-
-    def execute(self, context: Dict, verbose: bool = False):
-        from ogbujipt import word_loom
-        with open(self.loom_file, mode='rb') as fp:
-            loom = word_loom.load(fp)
-        items = self.language_items.split(' ')
-        if verbose:
-            print(f"Expanding {items} from {self.loom_file}")
-        content = '\n'.join([WorldLoomRead.get_loom_entry(loom[name], context) for name in items])
-        self._handle_execution_contribution(content, context)
-
-    @staticmethod
-    def get_loom_entry(loom_entry:word_loom.language_item, context: Mapping) -> Union[str, word_loom]:
-        """
-        Processes a language_item by formatting it with context-specific marker substitutions
-        if markers are present in the language_item. If no markers are available, the original
-        language_item is returned as is.
-
-        :param loom_entry: A wordloom `language_item` object that contains potential markers to be
-                           substituted and formatted with values from the context.
-        :param context: A dictionary-like object (`Mapping`) that holds marker-to-value
-                        mappings to be used for substitutions in the given loom_entry.
-        :return: Returns a formatted string if markers are found and substitutions can be
-                 applied; otherwise, returns the unprocessed `language_item` as is.
-
-        """
-        if loom_entry.markers:
-            marker_kwargs = {}
-            for marker in loom_entry.markers:
-                marker_kwargs[marker] = context[marker]
-            return loom_entry.format(**marker_kwargs)
-        else:
-            return loom_entry
-
-    @staticmethod
-    def dispatch_check(item: Mapping, program: PDLObject):
-        if "read_from_wordloom" in item:
-            return WorldLoomRead(item, program)
 
 class PDLRepeat(PDLObject, PDLStructuredBlock):
     def __init__(self, content: Mapping, program):
@@ -383,7 +336,8 @@ class PDLModel(PDLObject, PDLStructuredBlock):
         self.content = content
         self.input = self.program.dispatcher.handle(content["input"], self.program) if "input" in content else None
         self.parameters = content["parameters"] if "parameters" in content else {}
-        self.cot_prefix = content["cot_prefix"] if "cot_prefix" in content else {}
+        self.alpha_one = content["alpha_one"] if "alpha_one" in content else {}
+        self.cot_prefix = content["cot_prefix"] if "cot_prefix" in content else None
         self._get_common_attributes(content)
 
     def __repr__(self):
@@ -445,7 +399,7 @@ class PDFRead(PDLObject, PDLStructuredBlock):
             return PDFRead(item, program)
 
 class ParseDispatcher:
-    DISPATCH_RESOLUTION_ORDER = [PDLRead, WorldLoomRead, PDLRepeat, PDLText, PDLModel]
+    DISPATCH_RESOLUTION_ORDER = [PDLRead, PDLRepeat, PDLText, PDLModel]
 
     def handle(self, item: Mapping, program: PDLObject) -> PDLObject:
         if isinstance(item, str):
@@ -501,9 +455,8 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
         >>> program.text[0].parameters
         {'temperature': 0.6, 'min_p': 0.03, 'max_tokens': 600}
 
-        >>> program.execute(verbose=True)
-        Executing: program
-        .. model response ..
+        >>> program.execute()
+        '.. model response ..'
 
         >>> program.evaluation_environment
         {'_': [{'role': 'assistant', 'content': '.. model response ..'}]}
