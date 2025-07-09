@@ -64,9 +64,14 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
             model, tokenizer = load(self.model, tokenizer_config=tokenizer_config)
             if self.program.cache:
                 if isinstance(self.program.cache, str):
-                    self.program.cache = (make_prompt_cache(model)
-                                          if self.program.cache == PDLProgram.INTERNAL_CACHE_NAME else
-                                          load_prompt_cache(self.program.cache))
+                    if self.program.cache == PDLProgram.INTERNAL_CACHE_NAME:
+                        self.program.cache = (make_prompt_cache(model))
+                        if verbose:
+                            print(f"Using internal cache for prompts")
+                    else:
+                        self.program.cache = load_prompt_cache(self.program.cache)
+                        if verbose:
+                            print(f"Using external cache for prompts: {self.program.cache}")
             return model, tokenizer
 
         def generate(self, messages, tokenizer, model, verbose):
@@ -83,7 +88,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                                                  top_k=self.parameters.get("top_k", top_k)),
                             logits_processors=logits_processor,
                             verbose=verbose,
-                            prompt_cache=self.program.cache), prompt
+                            prompt_cache=self.program.cache,
+                            draft_model=self.draft_model), prompt
 
     class MLXModelEvaluation(MLXModelEvaluationBase):
         def _insert_cot_messages(self, messages: List[Dict], cot_prefix: List[Dict]):
