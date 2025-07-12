@@ -78,7 +78,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
             prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             if verbose:
                 cache_info = f" and cache" if self.program.cache else ""
-                print(f"Using parameters: {self.parameters}{cache_info}")
+                print(f"Using parameters: {self.parameters}{cache_info} for {self.model}")
             logits_processor = make_logits_processors(repetition_penalty=self.parameters.get("repetition_penalty",
                                                                                              repetition_penalty))
             draft_model = self.draft_model
@@ -88,7 +88,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 if draft_tokenizer.vocab_size != tokenizer.vocab_size:
                     raise ValueError("Draft model tokenizer does not match model tokenizer.")
                 elif verbose:
-                    print(f"Using draft model: {draft_model}")
+                    print(f"Using draft model: {self.draft_model}")
             return generate(model, tokenizer, prompt,
                             max_tokens=self.parameters.get("max_tokens", max_tokens),
                             sampler=make_sampler(temp=self.parameters.get("temperature", temperature),
@@ -141,15 +141,15 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 wait_words = self.alpha_one.get("wait_words", configuration.slow_thinking_stop_words)
                 if verbose:
-                    print(f"Using parameters: {self.parameters}, {self.alpha_one}")
+                    print(f"Using parameters: {self.parameters} and {self.alpha_one} for {self.model}")
                 draft_model = self.draft_model
                 if draft_model:
                     from mlx_lm.utils import load
                     draft_model, draft_tokenizer = load(self.draft_model)
                     if draft_tokenizer.vocab_size != tokenizer.vocab_size:
                         raise ValueError("Draft model tokenizer does not match model tokenizer.")
-                elif verbose:
-                    print(f"Using draft model: {draft_model}")
+                    elif verbose:
+                        print(f"Using draft model: {self.draft_model}")
                 response = alpha_one(model, tokenizer, prompt,
                                      configuration=configuration,
                                      max_tokens_per_call=self.parameters.get("max_tokens", max_tokens),
