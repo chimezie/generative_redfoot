@@ -10,8 +10,8 @@ dependencies = [
     "click",
     "tqdm",
     "ogbujipt",
-    "mlx",
-    "mlx-lm",
+    "mlx>=0.26.3",
+    "mlx-lm>=0.26.0",
     "pytest",
     "transformers"
 ]
