@@ -2,7 +2,7 @@ import warnings
 import json
 import asyncio
 
-from ..object_pdl_model import PDLObject, PDLStructuredBlock, PDLProgram, PDLModel
+from ..object_pdl_model import PDLProgram, PDLModel
 from ..utils import truncate_messages
 
 from typing import Mapping, Dict, List

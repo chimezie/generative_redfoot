@@ -67,7 +67,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                     if self.program.cache == PDLProgram.INTERNAL_CACHE_NAME:
                         self.program.cache = (make_prompt_cache(model))
                         if verbose:
-                            print(f"Using internal cache for prompts")
+                            print("Using internal cache for prompts")
                     else:
                         self.program.cache = load_prompt_cache(self.program.cache)
                         if verbose:
@@ -77,7 +77,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
         def generate(self, messages, tokenizer, model, verbose):
             prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             if verbose:
-                cache_info = f" and cache" if self.program.cache else ""
+                cache_info = " and cache" if self.program.cache else ""
                 print(f"Using parameters: {self.parameters}{cache_info} for {self.model}")
             logits_processor = make_logits_processors(repetition_penalty=self.parameters.get("repetition_penalty",
                                                                                              repetition_penalty))
@@ -127,10 +127,10 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                     self._insert_cot_messages(messages, json.load(cot_content))
             if verbose:
                 from pprint import pprint
-                print(f"Generating response using ..")
+                print("Generating response using ..")
                 pprint([{k: v if k == "role" else truncate_long_text(v)} for i in messages for k,v in i.items()])
             else:
-                print(f"Generating response ... ")
+                print("Generating response ... ")
             if self.alpha_one:
                 from alpha_one_mlx.reasoner import alpha_one
                 from alpha_one_mlx.models import get_configuration
@@ -186,10 +186,10 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
             model, tokenizer = self._get_model_cache_and_tokenizer()
             msg = context["_"][-1].copy()
             if verbose:
-                print(f"Extracting individual facts, statements, and ideas from using ",
+                print("Extracting individual facts, statements, and ideas from using ",
                       truncate_long_text(msg["content"]))
             else:
-                print(f"Generating response ... ")
+                print("Generating response ... ")
             msg["content"] = create_propositions_input(msg["content"])
             msg["role"] = "user"
             response, prompt = self.generate([msg], tokenizer, model, verbose=verbose)

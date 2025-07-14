@@ -19,7 +19,6 @@ This current AI dev ops wave could lean alot from that previous one, circa dawn 
 
 """
 
-import yaml
 import re
 from abc import ABC
 from typing import Mapping, Dict, Any, Optional, Union, List
@@ -154,6 +153,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
     PDL blcck for creating data
 
     Example:
+        >>> import yaml
         >>> program = PDLProgram(yaml.safe_load(PDL))
         >>> program.text.role
         'user'
@@ -422,6 +422,7 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
     A block or a list of blocks where blocks are expressions or structured blocks
 
     Example:
+        >>> import yaml
         >>> program = PDLProgram(yaml.safe_load(PDL))
         >>> print(program.text.content[0])
         PDLRead('What is your query? ' [outputs to context as user])

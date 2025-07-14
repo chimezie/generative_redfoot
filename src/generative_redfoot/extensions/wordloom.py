@@ -1,5 +1,4 @@
-import yaml
-from ..object_pdl_model import PDLObject, PDLStructuredBlock, PDL3, PDLProgram
+from ..object_pdl_model import PDLObject, PDLStructuredBlock
 from typing import Mapping, Dict, Any
 
 class WorldLoomRead(PDLObject, PDLStructuredBlock):
@@ -7,6 +6,8 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
     PDL block for reading sections for a prompt from a Worldloom (TOML / YAML) file using ogbujipt.word_loom
 
     Example:
+        >>> import yaml
+        >>> from ..object_pdl_model import PDL3, PDLProgram
         >>> p = PDLProgram(yaml.safe_load(PDL3))
         >>> p.cache
         'prompt_cache.safetensors'
