@@ -8,7 +8,6 @@ from .utils import truncate_long_text
 from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead, PDLRepeat, PDLText, PDLRead
 from .extensions.wordloom import WorldLoomRead
 from .extensions.toolio import ToolioCompletion
-from pyarrow.lib import Mapping
 from transformers import PreTrainedTokenizer
 from typing import Tuple, Dict, List
 
@@ -175,7 +174,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 context["_"] = []
 
         @staticmethod
-        def dispatch_check(item: Mapping, program: PDLProgram):
+        def dispatch_check(item: Dict, program: PDLProgram):
             if "model" in item:
                 return MLXModelEvaluation(item, program)
 
@@ -201,7 +200,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 context["_"] = []
 
         @staticmethod
-        def dispatch_check(item: Mapping, program: PDLProgram):
+        def dispatch_check(item: Dict, program: PDLProgram):
             if "APSModel" in item:
                 return MLXAPSModel(item, program)
 
