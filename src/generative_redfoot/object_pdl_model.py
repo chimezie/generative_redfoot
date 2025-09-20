@@ -111,13 +111,6 @@ class PDLObject(ABC):
         """
         pass
 
-    @staticmethod
-    @abstractmethod
-    def dispatch_check(item: Mapping, program):
-        """
-        Performs a parse-time dispatch check to determine if and how we are instantiating a PDL object
-        """
-        pass
 
 class TextCollator(PDLObject):
     def __init__(self, content: Any, program):
@@ -414,19 +407,27 @@ class PDFRead(PDLObject, PDLStructuredBlock):
                 out = io.StringIO()
                 for page in doc:  # iterate the document pages
                     if via_ocr:
-                        out.write(re.sub(r'\s+',
-                                         ' ',
-                                         page.get_text(textpage=page.get_textpage_ocr() if via_ocr else
-                                         page.extract_text())))
+                        # For OCR, we need to get the text from the textpage
+                        textpage = page.get_textpage_ocr()
+                        out.write(re.sub(r'\s+', ' ', page.get_text(textpage=textpage)))
                     else:
                         out.write(page.get_text())
                 content = out.getvalue()
         else:
-            if verbose:
-                print(f"Reading PDF content ({self.read_mode}) from bytes provided in context)")
             raw_content = self.resolve_references(context)
-            content = ''.join((page.get_textpage_ocr() if via_ocr else
-                               page.extract_text() for page in pymupdf.Document(stream=raw_content).pages))
+            if verbose:
+                print(f"Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) provided in context)")
+            # For raw content, we need to extract text properly
+            with pymupdf.open(stream=raw_content) as doc:
+                out = io.StringIO()
+                for page in doc:  # iterate the document pages
+                    if via_ocr:
+                        # For OCR, we need to get the text from the textpage
+                        textpage = page.get_textpage_ocr()
+                        out.write(re.sub(r'\s+', ' ', page.get_text(textpage=textpage)))
+                    else:
+                        out.write(page.get_text())
+                content = out.getvalue()
         self._handle_execution_contribution(content, context)
 
     def resolve_references(self, context: dict) -> Any:
