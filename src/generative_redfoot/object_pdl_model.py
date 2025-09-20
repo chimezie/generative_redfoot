@@ -20,7 +20,8 @@ This current AI dev ops wave could lean alot from that previous one, circa dawn 
 """
 
 import re
-from abc import ABC
+import io
+from abc import ABC, abstractmethod
 from typing import Mapping, Dict, Any, Optional, Union, List
 from pprint import pprint
 
@@ -97,7 +98,26 @@ text:
 """
 
 class PDLObject(ABC):
-    pass
+    @abstractmethod
+    def execute(self, context: Dict, verbose: bool = False) -> Any:
+        """Execute the PDL block.
+    
+        Args:
+            context: The execution context dictionary
+            verbose: Whether to print verbose execution information
+        
+        Returns:
+            Any: The result of executing this PDL block
+        """
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def dispatch_check(item: Mapping, program):
+        """
+        Performs a parse-time dispatch check to determine if and how we are instantiating a PDL object
+        """
+        pass
 
 class TextCollator(PDLObject):
     def __init__(self, content: Any, program):
@@ -360,6 +380,8 @@ class PDLModel(PDLObject, PDLStructuredBlock):
         if "model" in item:
             return PDLModel(item, program)
 
+PDF_READ_MODES = ["PDF_raw_read_ocr", "PDF_raw_read_txt", "PDF_filename_ocr", "PDF_filename_txt"]
+
 class PDFRead(PDLObject, PDLStructuredBlock):
     """
     Class that handles PDF reading as part of the execution of a PDL program
@@ -370,36 +392,58 @@ class PDFRead(PDLObject, PDLStructuredBlock):
     """
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
-        self.read_from = pdl_block["PDF_read"]
+        self.read_mode = next((mode for mode in PDF_READ_MODES if mode in pdl_block), None)
+        self.read_from = pdl_block[self.read_mode]
         self._get_common_attributes(pdl_block)
-        if not self.read_from:
-            self.message = pdl_block["message"]
-            self.read_from = pdl_block["read"]
-        else:
-            self.message = None
+        self.message = None
 
     def __repr__(self):
-        return f"PDFRead( from '{self.read_from}' [{self.descriptive_text()}])"
+        return f"PDFRead('{self.read_mode}' from '{self.read_from}' [{self.descriptive_text()}])"
 
     def execute(self, context: Dict, verbose: bool = False):
-        from PyPDF2 import PdfReader
+        try:
+            import pymupdf
+        except ImportError:
+            raise ImportError("PDF reading requires the pymupdf package to be installed")
+        via_ocr = self.read_mode in ["PDF_filename_ocr", "PDF_raw_read_ocr"]
+        if self.read_mode in ["PDF_filename_ocr", "PDF_filename_txt"]:
+            if verbose:
+                print(f"Reading PDF content ({self.read_mode}) from filename (in context or given)")
+            file_name = self.resolve_references(context)
+            with pymupdf.open(file_name) as doc:
+                out = io.StringIO()
+                for page in doc:  # iterate the document pages
+                    if via_ocr:
+                        out.write(re.sub(r'\s+',
+                                         ' ',
+                                         page.get_text(textpage=page.get_textpage_ocr() if via_ocr else
+                                         page.extract_text())))
+                    else:
+                        out.write(page.get_text())
+                content = out.getvalue()
+        else:
+            if verbose:
+                print(f"Reading PDF content ({self.read_mode}) from bytes provided in context)")
+            raw_content = self.resolve_references(context)
+            content = ''.join((page.get_textpage_ocr() if via_ocr else
+                               page.extract_text() for page in pymupdf.Document(stream=raw_content).pages))
+        self._handle_execution_contribution(content, context)
+
+    def resolve_references(self, context: dict) -> Any:
         if self.read_from and isinstance(self.read_from, dict):
             var_reference_group = VAR_REFERENCE_PATTERN.match(list(self.read_from)[0])
             if var_reference_group:
                 variable_name = var_reference_group.group('variable')
-                file_name = context[variable_name]
+                content = context[variable_name]
             else:
-                file_name = self.read_from
+                content = self.read_from
         else:
-            file_name = self.read_from
-        if verbose:
-            print(f"Reading {file_name} from context")
-        content = ''.join((page.extract_text() for page in PdfReader(file_name).pages))
-        self._handle_execution_contribution(content, context)
+            content = self.read_from
+        return content
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
-        if "PDF_read" in item:
+        if any(read_type in item for read_type in PDF_READ_MODES):
             return PDFRead(item, program)
 
 class ParseDispatcher:
