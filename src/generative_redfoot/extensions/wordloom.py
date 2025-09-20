@@ -32,6 +32,7 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         items = self.language_items.split(' ')
         if verbose:
             print(f"Expanding {items} from {self.loom_file}")
+            print(f"Loom markers: ", ', '.join([loom[name].markers for name in items]))
         content = '\n'.join([WorldLoomRead.get_loom_entry(loom[name], context) for name in items])
         self._handle_execution_contribution(content, context)
 
