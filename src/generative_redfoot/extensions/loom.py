@@ -26,13 +26,14 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         return f"Wordloom('{self.language_items}' from {self.loom_file} [{self.descriptive_text()}])"
 
     def execute(self, context: Dict, verbose: bool = False):
-        from ogbujipt import word_loom
+        from wordloom import load as world_loom_load
         with open(self.loom_file, mode='rb') as fp:
-            loom = word_loom.load(fp)
+            loom = world_loom_load(fp)
         items = self.language_items.split(' ')
         if verbose:
             print(f"Expanding {items} from {self.loom_file}")
-            print(f"Loom markers: ", ', '.join([loom[name].markers for name in items]))
+            print(f"Loom markers: ", ', '.join([str(loom[name].markers) for name in items]))
+            print(f"Context: {context}")
         content = '\n'.join([WorldLoomRead.get_loom_entry(loom[name], context) for name in items])
         self._handle_execution_contribution(content, context)
 
