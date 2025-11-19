@@ -1,29 +1,37 @@
 """
 Object PDL Model
 
-Takes a minimal Prompt Declaration Language (PDL) file and generates a finite state generative machine
-as Python objects for a subset of the PDL language [1], [2].  These objects (the "programs" in particular)
-can be executed, and their Model class can be extended to incorporate the functionality for
-evaluating the prompts against the models specified in PDL using any accumulated conversational
-context, prompts, and generation parameters (sampling parameters, for example), (optionally) updating
-the context as the programs execution continues.
+Generative Redfoot: A generative, conversational workflow and multi-agent system using PDL and MLX.
+This module implements the core object model for the PDL (Prompt Declaration Language) system that 
+enables declarative, composable AI workflows following the design patterns documented in the project.
 
-The model evaluation is implemented using mlx
+The system takes a Prompt Declaration Language (PDL) file and generates a finite state generative machine
+as Python objects for a subset of the PDL language. These objects (the "programs" in particular) can 
+be executed as web services or locally, implementing the core concepts of contextual state management, 
+declarative composition, and extension-based architecture. The objects maintain conversational context 
+through an accumulated context that can be updated and shared across PDL blocks, enabling complex 
+multi-step workflows where each step builds on previous results.
 
-A callback to Redfoot [1] by James Tauber and Dan Krech, way back in the dawn of the Semantic Web agent framework days.
-This current AI dev ops wave could lean alot from that previous one, circa dawn of this millennium
+The model evaluation is implemented using mlx for efficient inference, supporting the Advanced Caching 
+and Optimization design pattern with both internal and external caching mechanisms.
+
+This system recasts the original Redfoot concept with firm roots in declarative and RESTful principles 
+in how generative AI actions and capabilities can be composed and orchestrated.
 
 [1] https://jtauber.com/redfoot/
 [2] https://github.com/IBM/prompt-declaration-language
 [3] https://arxiv.org/pdf/2410.19135
 
 """
-
+import os
 import re
 import io
 from abc import ABC, abstractmethod
 from typing import Mapping, Dict, Any, Optional, Union, List
 from pprint import pprint
+
+from fastapi import UploadFile
+
 
 def pretty_print_list(my_list, sep=", ", and_char=", & "):
     return and_char.join([sep.join(my_list[:-1]), my_list[-1]]) if len(my_list) > 2 else '{} and {}'.format(
@@ -98,12 +106,21 @@ text:
 """
 
 class PDLObject(ABC):
+    """
+    Abstract base class that implements the foundation for the Contextual State Management design pattern.
+    All PDL objects inherit from this class and participate in maintaining and updating the conversational 
+    context that enables complex multi-step workflows where each step builds on previous results.
+    
+    The context is accumulated and shared across PDL blocks, supporting the core concept of generative AI 
+    workflows as described in the project documentation.
+    """
     @abstractmethod
     def execute(self, context: Dict, verbose: bool = False) -> Any:
-        """Execute the PDL block.
+        """Execute the PDL block as part of the declarative composition pattern.
     
         Args:
-            context: The execution context dictionary
+            context: The execution context dictionary that maintains conversational state
+                     across PDL blocks, implementing the Contextual State Management pattern
             verbose: Whether to print verbose execution information
         
         Returns:
@@ -122,20 +139,27 @@ class TextCollator(PDLObject):
 
 class PDLStructuredBlock:
     """
+    Implements the structured block pattern that supports the declarative composition design pattern.
+    These blocks enable flexible, composable AI workflows by allowing different types of content and
+    behavior to be specified declaratively in PDL files.
+
     Optional keywords for block: "description", "def", "role", and "contribute" currently
 
-    - description: is a special comment
-    - def: assigns the result of the block to a variable
+    - description: is a special comment for documentation
+    - def: assigns the result of the block to a variable, supporting variable references and protocol binding
     - defs: creates multiple variable definitions, each with its own name 𝑥 and a value given
-      by a nested PDL program:
+      by a nested PDL program, supporting the Contextual State Management design pattern:
     - role: causes the data resulting from a block to be decorated with a role, such as ‘user’,
       ‘assistant’, or ‘system’. If a block does not have an explicit role: , it defaults to
       ‘assistant’ for model blocks and to ‘user’ for all other blocks. Inner nested blocks have
-      the same role as their outer enclosing block.
+      the same role as their outer enclosing block, maintaining conversational context.
     - contribute: [specifies] a (possibly empty) subset of the two destinations ‘result’ or
       ‘context’. By default, every block contributes to both its own result and the background
       context for later LLM calls. [..] [can limit] the contribution of a block to just the
-      context to declutter the output.
+      context to declutter the output, supporting the Contextual State Management design pattern.
+
+    This structure enables the core concept of maintaining conversational context through accumulated 
+    context that can be updated and shared across PDL blocks, as described in the project documentation.
     """
     default_contribution = ["context", "result"]
     default_role = "user"
@@ -339,7 +363,20 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
 
 class PDLModel(PDLObject, PDLStructuredBlock):
     """
-    Meant to be extended and for its execute method to be overridden for LLM evaluation
+    Core model class that implements the Model Enhancement Features design pattern.
+    This class is designed to be extended to incorporate functionality for evaluating
+    prompts against models specified in PDL using accumulated conversational context,
+    supporting the Contextual State Management pattern.
+
+    The PDLModel class supports:
+    - Chain-of-thought (CoT) prefixes for few-shot learning through the cot_prefix parameter
+    - Alpha One reasoning through the alpha_one parameter
+    - Draft model support for speculative decoding through the draft_model parameter
+    - Model parameter management for sampling strategies (temperature, top-k, top-p, min-p, max_tokens)
+    - Context contribution controls to manage conversational state
+
+    This implementation enables flexible, composable AI workflows as described in the project 
+    documentation and supports the extension-based architecture pattern.
     """
     default_role = "assistant"
     MODEL_KEY = "model"
@@ -377,11 +414,21 @@ PDF_READ_MODES = ["PDF_raw_read_ocr", "PDF_raw_read_txt", "PDF_filename_ocr", "P
 
 class PDFRead(PDLObject, PDLStructuredBlock):
     """
-    Class that handles PDF reading as part of the execution of a PDL program
+    Class that implements the Multi-Modal Input Processing design pattern by handling
+    PDF reading as part of the execution of a PDL program. This class supports the
+    four distinct PDF reading modes that enable flexible document processing workflows:
+    PDF_raw_read_ocr, PDF_raw_read_txt, PDF_filename_ocr, and PDF_filename_txt.
 
-    Parses and extracts from PDF and contributes to the larger operational workflow
-     of the execution of a PDL program, leveraging PyPDF2 for the extraction.
+    The class provides robust PDF processing capabilities including OCR support for scanned
+    documents, raw content processing, file path validation, and UploadFile integration
+    for web service contexts. It parses and extracts text from PDF documents and contributes
+    to the larger operational workflow of the execution of a PDL program, supporting both 
+    direct text extraction and OCR processing for various document types.
 
+    This implementation exemplifies the Extension-Based Architecture design pattern, 
+    demonstrating how the ParseDispatcher system allows for extensions to be registered 
+    and resolved based on content, enabling the capabilities described in the project 
+    documentation's Extensions section.
     """
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
@@ -398,37 +445,87 @@ class PDFRead(PDLObject, PDLStructuredBlock):
             import pymupdf
         except ImportError:
             raise ImportError("PDF reading requires the pymupdf package to be installed")
+        
         via_ocr = self.read_mode in ["PDF_filename_ocr", "PDF_raw_read_ocr"]
+        
         if self.read_mode in ["PDF_filename_ocr", "PDF_filename_txt"]:
+            # Handle file path reading
             if verbose:
                 print(f"Reading PDF content ({self.read_mode}) from filename (in context or given)")
             file_name = self.resolve_references(context)
+            
+            # Validate the file path
+            if not file_name:
+                raise ValueError("PDF file path is empty or None")
+            if not os.path.exists(file_name):
+                raise FileNotFoundError(f"PDF file does not exist: {file_name}")
+            
+            # Open file with explicit filetype to avoid MuPDF error
             with pymupdf.open(file_name) as doc:
-                out = io.StringIO()
-                for page in doc:  # iterate the document pages
-                    if via_ocr:
-                        # For OCR, we need to get the text from the textpage
-                        textpage = page.get_textpage_ocr()
-                        out.write(re.sub(r'\s+', ' ', page.get_text(textpage=textpage)))
-                    else:
-                        out.write(page.get_text())
-                content = out.getvalue()
+                content = self._extract_content(doc, via_ocr)
         else:
+            # Handle raw content reading
             raw_content = self.resolve_references(context)
             if verbose:
                 print(f"Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) provided in context)")
-            # For raw content, we need to extract text properly
-            with pymupdf.open(stream=raw_content) as doc:
-                out = io.StringIO()
-                for page in doc:  # iterate the document pages
-                    if via_ocr:
-                        # For OCR, we need to get the text from the textpage
-                        textpage = page.get_textpage_ocr()
-                        out.write(re.sub(r'\s+', ' ', page.get_text(textpage=textpage)))
-                    else:
-                        out.write(page.get_text())
-                content = out.getvalue()
+            
+            if isinstance(raw_content, UploadFile):
+                raw_content = raw_content.file.read()
+            elif isinstance(raw_content, str):
+                # Check if it's actually a file path
+                # Only treat as file path if it's not already the raw PDF content as a string  
+                # This prevents confusion between file paths and actual raw PDF byte strings
+                if os.path.exists(raw_content) and len(raw_content) <= 1000 and not raw_content.startswith('%PDF-'):
+                    # It's a valid file path, read the file content as bytes for consistent processing
+                    with open(raw_content, 'rb') as f:
+                        raw_content = f.read()
+                else:
+                    # It's raw content or a non-existent path, convert to bytes
+                    raw_content = raw_content.encode('utf-8')
+            elif not isinstance(raw_content, (bytes, bytearray)):
+                # Convert other types to bytes
+                raw_content = str(raw_content).encode('utf-8')
+
+            # Open from bytes stream with explicit filetype to ensure PDF format is recognized
+            # The "cannot find document handler for file type: ''" error occurs when PyMuPDF can't detect the format
+            try:
+                # First try direct stream approach
+                with pymupdf.open(stream=raw_content, filetype="pdf") as doc:
+                    content = self._extract_content(doc, via_ocr)
+            except Exception as e:
+                error_str = str(e)
+                if "no objects found" in error_str or ("FzError" in str(type(e)) and "code=7" in error_str):
+                    raise ValueError("The provided PDF content is invalid or corrupted and cannot be processed") from e
+                elif "cannot find document handler for file type" in error_str or ("FzError" in str(type(e)) and "code=6" in error_str):
+                    # When direct bytes stream fails, try using a temporary file approach
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                        tmp_file.write(raw_content)
+                        tmp_file_path = tmp_file.name
+                    
+                    try:
+                        with pymupdf.open(tmp_file_path) as doc:
+                            content = self._extract_content(doc, via_ocr)
+                    finally:
+                        # Clean up the temporary file
+                        os.unlink(tmp_file_path)
+                else:
+                    raise
+        
         self._handle_execution_contribution(content, context)
+
+    def _extract_content(self, doc, via_ocr: bool):
+        """Helper method to extract content from a PDF document."""
+        import re
+        out = io.StringIO()
+        for page in doc:  # iterate the document pages
+            if via_ocr:
+                # For OCR, we need to get the text from the textpage
+                textpage = page.get_textpage_ocr()
+                out.write(re.sub(r'\s+', ' ', page.get_text(textpage=textpage)))
+            else:
+                out.write(page.get_text())
+        return out.getvalue()
 
     def resolve_references(self, context: dict) -> Any:
         if self.read_from and isinstance(self.read_from, dict):
@@ -448,9 +545,27 @@ class PDFRead(PDLObject, PDLStructuredBlock):
             return PDFRead(item, program)
 
 class ParseDispatcher:
+    """
+    Implements the Extension-Based Architecture design pattern by providing a dispatcher system
+    that allows for extensions to be registered and resolved based on content. This class enables
+    the core concept that the language of the PDL file can be extended with additional custom 
+    functionality as described in the project documentation.
+
+    The ParseDispatcher resolves PDL language constructs by checking them against registered
+    extension classes in a defined order, enabling the modular extension system that supports
+    various PDL capabilities like file reading, PDF processing, prompt templates, and custom
+    model types through the PDLModel base class.
+    """
     DISPATCH_RESOLUTION_ORDER = [PDLRead, PDLRepeat, PDLText, PDLModel]
 
     def handle(self, item: Mapping, program: PDLObject) -> PDLObject:
+        """
+        Handle PDL item resolution implementing the Extension-Based Architecture design pattern.
+
+        This method resolves PDL language constructs by checking them against registered 
+        extension classes in the DISPATCH_RESOLUTION_ORDER, enabling the system's extensibility
+        as described in the project documentation's Extensions section.
+        """
         if isinstance(item, str):
             return item
         else:
@@ -462,9 +577,21 @@ class ParseDispatcher:
 
 class PDLProgram(PDLObject, PDLStructuredBlock):
     """
-    A PDL "program"
+    A PDL "program" that embodies the core design patterns of Generative Redfoot for creating
+    flexible, composable AI workflows. This class implements the Declarative Composition pattern
+    by processing blocks or a list of blocks where blocks are expressions or structured blocks.
 
-    A block or a list of blocks where blocks are expressions or structured blocks
+    The PDLProgram class enables:
+    - Contextual State Management: Maintains conversational context through accumulated context
+      that can be updated and shared across PDL blocks
+    - Declarative Composition: Allows complex workflows to be defined in YAML without complex programming logic
+    - Caching and Optimization: Supports both internal and external caching mechanisms through the cache property
+    - Extension Resolution: Works with the ParseDispatcher to handle various PDL extension blocks
+    - Service Orchestration: Can be executed as part of web services when server configuration is present
+
+    The program maintains the evaluation environment (context) that accumulates conversational state
+    as the program executes, supporting the core concept that complex multi-step workflows where each
+    step builds on previous results.
 
     Example:
         >>> import yaml
