@@ -1,15 +1,17 @@
 
 """
-Command-line interface for generative_redfoot, a tool for executing PDL (Program Description Language) 
-programs with support for MLX-based LLM inference, prompt caching, and FastAPI service deployment.
+Command-line interface for Generative Redfoot, a generative, conversational workflow and multi-agent system
+using PDL (Prompt Declaration Language) and MLX. Generative Redfoot is a PDL-based declarative approach to 
+creating orchestrated, generative AI workflows and services, conceived as prompt programming composition.
 
 This module provides:
 1. Cache Preparation: Handles 'content_model' directives to create prompt caches for faster inference
 2. Model Evaluation: Executes LLM inference using cached prompts and various sampling strategies
-3. Service Deployment: Launches FastAPI services based on PDL server configuration
+3. Service Orchestration: Launches FastAPI services based on PDL server configuration for RESTful deployment
 
-The tool processes PDL files that define complex LLM workflows, including multi-step prompting,
-context management, and integration with external data sources through extensions like wordloom.
+The tool processes PDL files that define complex LLM workflows, implementing the design patterns for
+composable AI workflows as described in the project documentation, including contextual state management,
+extension-based architecture, and service orchestration.
 """
 import click
 import yaml
@@ -24,7 +26,7 @@ from fastapi.responses import JSONResponse, Response
 
 from .utils import truncate_long_text
 from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead, PDLRepeat, PDLText, PDLRead
-from .extensions.wordloom import WorldLoomRead
+from .extensions.loom import WorldLoomRead
 from .extensions.toolio import ToolioCompletion
 from transformers import PreTrainedTokenizer
 from typing import Tuple, Dict, List, Mapping
@@ -42,26 +44,31 @@ from typing import Tuple, Dict, List, Mapping
 @click.argument('pdl_file')
 def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbose, variables, pdl_file):
     """
-    Main entry point for the generative_redfoot CLI tool.
-    
-    This tool processes PDL (Program Description Language) files to execute complex
-    LLM workflows that may include:
-    
-    1. Cache Preparation:
-       - Handles 'content_model' directives in the PDL cache section
+    Main entry point for the Generative Redfoot CLI tool that processes PDL (Prompt Declaration Language) 
+    files to execute complex, declarative AI workflows.
+
+    This tool implements the design patterns for flexible, composable AI workflows that include:
+
+    1. Cache Preparation (Advanced Caching and Optimization):
+       - Handles 'content_model' directives in the PDL cache section for persistent caching
        - Creates prompt caches using mlx_lm for faster subsequent inference
        - Supports KV cache quantization parameters for memory optimization
-       
-    2. Model Evaluation:
-       - Evaluates models referenced by name (e.g., 'user_cache')
-       - Loads from cached prompt files when available
-       - Supports advanced features like Alpha-One reasoning and draft models
-       
-    3. FastAPI Service:
-       - Launches a web service when 'server' directive is present in PDL
+       - Implements both internal and external caching mechanisms
+
+    2. Model Evaluation (Model Enhancement Features):
+       - Evaluates models referenced by name (e.g., 'user_cache') from cached files
+       - Loads from cached prompt files when available for efficient execution
+       - Supports advanced features like Alpha-One reasoning and draft model speculative decoding
+
+    3. Service Orchestration:
+       - Launches a FastAPI web service when 'server' directive is present in PDL
        - Configures host, port, and request handling based on PDL parameters
        - Processes incoming requests by executing the PDL program with request content
-       
+       - Supports multi-format content processing with variable binding via request_body_marker
+
+    The tool embodies the core concepts of contextual state management and declarative composition,
+    enabling complex multi-step workflows where each step builds on previous results.
+
     Args:
         temperature (float): Sampling temperature for text generation
         repetition_penalty (float): Penalty for repeating tokens
@@ -70,7 +77,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
         max_tokens (int): Maximum number of tokens to generate
         min_p (float): Minimum probability threshold for sampling
         verbose (bool): Enable verbose output
-        variables (tuple): Key-value pairs to inject into the PDL context
+        variables (tuple): Key-value pairs to inject into the PDL context for dynamic configuration
         pdl_file (str): Path to the PDL program file to execute
     """
     import mlx.nn as nn
@@ -107,12 +114,14 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
     class CachePrep(PDLModel):
         """
         Cache Preparation model that handles 'content_model' instances in the PDL cache
-        'cache' section. Extracts caching parameters and creates an mlx_lm prompt cache file using
-        the content generated in the preceding PDL steps, storing the cache in the specified `file` using a `name`
+        'cache' section, implementing the Advanced Caching and Optimization design pattern. 
+        Extracts caching parameters and creates an mlx_lm prompt cache file using the content 
+        generated in the preceding PDL steps, storing the cache in the specified `file` using a `name`
         that can be referenced by a model later in the execution that wishes to use the cache.
 
         A 'prefix_marker' property can specify the name of a wordloom marker that indicates the end of the common
-        prefix to use for the cache.
+        prefix to use for the cache, supporting the Contextual State Management pattern by maintaining 
+        accumulated context through PDL blocks.
 
         The `kv_group_size`, `quantized_kv_start`, `kv_bits`, and `max_kv_size` properties can be used to control
         the caching behavior:
@@ -121,7 +130,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
         - kv_bits: Number of bits for KV cache quantization. Defaults to no quantization (default: 4)
         - max_kv_size: Maximum key-value cache size (default: 10000)
 
-        Uses mlx_lm.cache_prompt and the --prompt-cache-file option of mlx_lm.generate as a guide.
+        Implements the caching mechanisms described in the project documentation's Caching section
+        for efficient inference in generative AI workflows.
         """
         MODEL_KEY = "content_model"
         def __init__(self, content: Mapping, program):
@@ -217,13 +227,18 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
 
     class MLXModelEvaluationBase(PDLModel):
         """
-        Base class for MLX model evaluation that handles loading models and caches.
-        
+        Base class for MLX model evaluation that implements the Advanced Caching and Optimization design pattern.
+        This class handles loading models and managing both internal and external caching mechanisms to support 
+        efficient inference in generative AI workflows.
+
         When a model is referenced by name (e.g., 'autocode_cache'), this class:
         1. Checks if the model name exists in the program's cache_lookup
         2. If found, loads the model from the cached file and sets up the prompt cache
         3. If not found, loads the model directly from its path
-        4. Handles both internal and external cache mechanisms
+        4. Handles both internal and external cache mechanisms as described in the project documentation
+
+        This implementation supports the Model Enhancement Features pattern with support for draft models
+        and various sampling strategies, enabling efficient execution of complex LLM workflows.
         """
         def _get_model_cache_and_tokenizer(self) -> Tuple[nn.Module, PreTrainedTokenizer]:
             eos_token = self.parameters.get("eos_token")
@@ -281,18 +296,21 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
 
     class MLXModelEvaluation(MLXModelEvaluationBase):
         """
-        MLX model evaluation implementation that executes model inference using the MLX framework.
-        
-        This class handles:
-        1. Loading models and caches through the base class
-        2. Processing messages and context for model input
-        3. Supporting chain-of-thought (CoT) prefixes for few-shot learning
-        4. Handling both regular generation and Alpha-One reasoning
-        5. Managing draft models for speculative decoding
-        6. Contributing results back to the execution context
-        
-        The class supports loading from cached prompts when the model name exists in 
-        program.cache_lookup, using the prefix cache file stored with the model.
+        MLX model evaluation implementation that executes model inference using the MLX framework
+        and implements multiple design patterns for flexible AI workflows.
+
+        This class embodies the following design patterns from the project documentation:
+        1. Loading models and caches through the base class (Advanced Caching and Optimization)
+        2. Processing messages and context for model input (Contextual State Management)
+        3. Supporting chain-of-thought (CoT) prefixes for few-shot learning (Model Enhancement Features)
+        4. Handling both regular generation and Alpha-One reasoning (Model Enhancement Features)
+        5. Managing draft models for speculative decoding (Model Enhancement Features)
+        6. Contributing results back to the execution context (Contextual State Management)
+
+        The class supports the declarative composition pattern by processing PDL blocks that can be
+        chained together to create complex multi-step workflows. It supports loading from cached 
+        prompts when the model name exists in program.cache_lookup, using the prefix cache file 
+        stored with the model as described in the project's caching section.
         """
         def _insert_cot_messages(self, messages: List[Dict], cot_prefix: List[Dict]):
             """
@@ -411,10 +429,10 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                                             CachePrep, MLXModelEvaluation, MLXAPSModel, PDFRead]
     with open(pdl_file, "r") as file:
         program_yaml = yaml.safe_load(file)
-        program = PDLProgram(program_yaml, dispatcher=dispatcher, initial_context=dict(variables))
+        ctx = dict(variables) if variables else {}
+        program = PDLProgram(program_yaml, dispatcher=dispatcher, initial_context=ctx)
         model_cache = {}
         cache_lookup = {}
-        ctx = {}
         if program.cache:
             if not isinstance(program.cache, str):
                 #Indicate any wordloom marker for use in cache boundaries, etc.
@@ -444,7 +462,9 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
             port = int(server_config["port"])
             request_body_marker = server_config["request_body_marker"]
             path = server_config["path"]
-            expected_content_type = server_config["content_type"]
+            expected_content_type = None
+            if "content_type" in server_config:
+                expected_content_type = server_config["content_type"]
             log_level = server_config.get("log_level", logging.DEBUG).upper()
             log_path = server_config.get("log_path", "/tmp/server.log")
 
@@ -473,6 +493,9 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
 
+            if variables:
+                logger.debug(f"Using variables: {variables} as initial_context")
+
             @app.post(path)
             async def process_request(request: Request) -> Response:
                 """
@@ -484,8 +507,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 3. Creates a new PDL program instance with the request content mapped to a marker
                 4. Executes the PDL program in a separate thread to avoid blocking
                 5. Returns the final assistant response as plain text
-                
-                The request body is mapped to the specified request_body_marker defined in the 
+
+                The request body is mapped to the specified request_body_marker defined in the
                 PDL server configuration, allowing the PDL program to reference the incoming
                 request content using template substitution.
 
@@ -493,13 +516,13 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                     request (Request): The incoming FastAPI request object with:
                         - Headers containing content-type matching the PDL configuration
                         - Body containing the text to process
-                        
+
                 Returns:
                     Response: Plain text response containing the final assistant message
                         from the executed PDL program
-                    
+
                 Raises:
-                    HTTPException: 
+                    HTTPException:
                         - 415: If content type doesn't match expected type
                         - 500: If there's an error executing the PDL program
                 """
@@ -513,15 +536,46 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 if "multipart/form-data" in content_type.lower():
                     # Handle multipart form data
                     form = await request.form()
-                    form_data = {key: str(value) for key, value in form.items()}
+                    # Process form data, handling UploadFile objects properly
+                    form_data = {}
+                    for key, value in form.items():
+                        if hasattr(value, 'file') and hasattr(value, 'filename'):
+                            # This is an UploadFile object, read its content
+                            try:
+                                # Read the file content as bytes
+                                file_content = await value.read()
+                                # Reset file pointer to beginning for potential re-reading
+                                if hasattr(value, '_file'):
+                                    value._file.seek(0)
+                                # For file uploads that will be processed by PDFRead, keep as bytes
+                                # Check if this might be a PDF file based on extension or content-type
+                                if hasattr(value, 'content_type') and 'pdf' in (value.content_type or '').lower():
+                                    # Keep PDF content as bytes for proper handling by PDFRead
+                                    form_data[key] = file_content
+                                elif isinstance(file_content, bytes):
+                                    try:
+                                        # For non-PDF binary files, try to decode as text if possible
+                                        form_data[key] = file_content.decode('utf-8')
+                                    except UnicodeDecodeError:
+                                        # For binary files, we can store as bytes which can be handled by the PDL program
+                                        form_data[key] = file_content
+                                else:
+                                    form_data[key] = file_content
+                            except Exception as e:
+                                logger.warning(f"Request {request_id}: Error reading file upload {key}: {str(e)}")
+                                form_data[key] = str(value)  # fallback to string representation
+                        else:
+                            # Regular form field, convert to string
+                            form_data[key] = str(value)
                     body_content = form_data.get(request_body_marker, "")
                 elif "application/x-www-form-urlencoded" in content_type.lower():
                     # Handle URL-encoded form data
                     form = await request.form()
+                    # For URL-encoded data, all values should be strings
                     form_data = {key: str(value) for key, value in form.items()}
                     body_content = form_data.get(request_body_marker, "")
                 else:
-                    if expected_content_type.lower() not in content_type.lower():
+                    if expected_content_type is not None and expected_content_type.lower() not in content_type.lower():
                         raise HTTPException(status_code=415,
                                             detail=f"Unsupported Media Type. Expected {expected_content_type}.")
                     body_content = await request.body()
@@ -541,6 +595,8 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 # Add form data to context if available
                 if form_data:
                     initial_context = {**form_data, request_body_marker: body_content}
+                    form_data_short_hand = {k:v for k,v in form_data.items() if isinstance(v, str)}
+                    logger.debug(f"Request {request_id}: Form data: {form_data_short_hand}")
                 else:
                     initial_context = {request_body_marker: body_content}
 
@@ -551,10 +607,11 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 try:
                     request_program = PDLProgram(program_yaml, dispatcher=dispatcher, initial_context=initial_context)
                     request_program.cache_lookup = cache_lookup
-                    logger.debug(f"Request {request_id}: Initial context keys: {list(initial_context.keys())}")
-                    logger.debug(f"Request {request_id}: Named K/V caches (and corresponding cache file): {cache_lookup}")
                     logger.debug(
-                        f"Request {request_id}: Document text length: {len(initial_context.get(request_body_marker, ''))}")
+                        f"Request {request_id}: Initial context variable names: {list(initial_context.keys())}")
+                    logger.debug(f"Request {request_id}: Named K/V caches (& corresponding cache file): {cache_lookup}")
+                    logger.debug(
+                        f"Request {request_id}: Document length: {len(initial_context.get(request_body_marker, ''))}")
 
                     # Run the PDL program execution in a separate thread to avoid blocking
                     # and to properly handle any async operations within the program
@@ -575,8 +632,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                     raise HTTPException(status_code=500, detail=f"Error loading or executing PDL program: {str(e)}")
                 elapsed_time = time.time() - start_time
                 elapsed_minutes = int(elapsed_time // 60)
-                elapsed_milliseconds = int((elapsed_time % 60) * 1000)
-                logger.info(f"Request {request_id}: Completed in {elapsed_minutes}m {elapsed_milliseconds}ms")
+                logger.info(f"Request {request_id}: Completed in {elapsed_minutes} minutes")
 
                 final_msg = initial_context['_'][-1]
                 assert final_msg['role'] == 'assistant'
