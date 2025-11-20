@@ -22,7 +22,7 @@ import logging
 import uvicorn
 
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 
 from .utils import truncate_long_text
 from .object_pdl_model import PDLModel, PDLProgram, ParseDispatcher, PDFRead, PDLRepeat, PDLText, PDLRead
