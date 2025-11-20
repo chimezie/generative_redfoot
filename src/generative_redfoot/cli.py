@@ -641,7 +641,6 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
             logger.info(f"Starting generative redfoot service with config: {pdl_file}")
             # logger.info(f"Logging level set to: {args.log_level}")
             logger.info(f"Service will be available at: http://{host}:{port}{path}")
-            logger.info("Endpoint: POST /metacoder (accepts text/plain content)")
 
             # Start the FastAPI server
             uvicorn.run(app, host=host, port=port, log_level=log_level.lower())
