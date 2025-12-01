@@ -31,6 +31,7 @@ from typing import Mapping, Dict, Any, Optional, Union, List
 from pprint import pprint
 
 from fastapi import UploadFile
+import logging
 
 
 def pretty_print_list(my_list, sep=", ", and_char=", & "):
@@ -177,6 +178,9 @@ class PDLStructuredBlock:
                 print(content)
             if "context" in self.contribute:
                 context.setdefault('_', []).append(msg)
+            if self.var_def:
+                logging.debug(f"Defining variable {self.var_def} with value {content}")
+                context[self.var_def] = content
 
     def descriptive_text(self):
         var_suffix = f" -> ${self.var_def}" if self.var_def else ""
@@ -317,7 +321,7 @@ class PDLRead(PDLObject, PDLStructuredBlock):
             else:
                 file_name = self.read_from
             if verbose:
-                print(f"Reading {file_name} from context")
+                logging.debug(f"Reading {file_name} from context")
             with open(file_name, "r") as file:
                 content = file.read()
         else:
@@ -402,7 +406,7 @@ class PDLModel(PDLObject, PDLStructuredBlock):
         if self.input:
             source_phrase = f" from {self.input}"
         if verbose:
-            print(f"Executing model: {self.model} using {context}{source_phrase}")
+            logging.debug(f"Executing model: {self.model} using {context}{source_phrase}")
         self._handle_execution_contribution(".. model response ..", context)
 
     @staticmethod
@@ -451,7 +455,7 @@ class PDFRead(PDLObject, PDLStructuredBlock):
         if self.read_mode in ["PDF_filename_ocr", "PDF_filename_txt"]:
             # Handle file path reading
             if verbose:
-                print(f"Reading PDF content ({self.read_mode}) from filename (in context or given)")
+                logging.debug(f"Reading PDF content ({self.read_mode}) from filename (in context or given)")
             file_name = self.resolve_references(context)
             
             # Validate the file path
@@ -467,7 +471,7 @@ class PDFRead(PDLObject, PDLStructuredBlock):
             # Handle raw content reading
             raw_content = self.resolve_references(context)
             if verbose:
-                print(f"Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) provided in context)")
+                logging.debug(f"Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) provided in context)")
             
             if isinstance(raw_content, UploadFile):
                 raw_content = raw_content.file.read()
@@ -650,9 +654,7 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
         self.evaluation_environment = initial_context if initial_context else {}
 
     def __repr__(self):
-        program_state = self.evaluation_environment if self.evaluation_environment else 'unexecuted'
-        caching_info = f" [caching to {self.cache}]" if self.cache else ""
-        return f"PDLProgram('{self.description}'\n\t{self.text}\n\t{program_state}{caching_info})"
+        return f"PDLProgram('[..]')"
 
     def execute(self, verbose: bool = False):
         if verbose:
