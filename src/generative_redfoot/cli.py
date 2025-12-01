@@ -352,11 +352,22 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 print("Generating response ... ")
             if self.alpha_one:
                 from alpha_one_mlx.reasoner import alpha_one
-                from alpha_one_mlx.models import get_configuration
+                from alpha_one_mlx.models import (get_configuration,
+                                                  get_thinking_template_parser,
+                                                  average_thinking_tokens,
+                                                  Qwen3ThinkingTemplateParser)
 
                 configuration = get_configuration(model.model_type)
+                thinking_parser = get_thinking_template_parser(model.model_type, tokenizer)
                 alpha = self.alpha_one.get("alpha", 1.4)
-                threshold = int(max_tokens - alpha * self.alpha_one["thinking_token_length"])
+
+                if "thinking_token_length" in self.alpha_one:
+                    threshold = int(max_tokens - alpha * self.alpha_one["thinking_token_length"])
+                else:
+                    num_avg_thinking_tokens = average_thinking_tokens(thinking_parser, messages)
+                    logger.info(f"Average thinking tokens length so far: {num_avg_thinking_tokens}")
+                    threshold = int(max_tokens - alpha * int(num_avg_thinking_tokens))
+                logger.debug(f"Using threshold: {threshold}")
                 prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
                 wait_words = self.alpha_one.get("wait_words", configuration.slow_thinking_stop_words)
                 if verbose:
@@ -382,7 +393,13 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                                      wait_words=wait_words,
                                      prompt_cache=self.program.cache,
                                      draft_model=draft_model)
-
+                parsed_result = thinking_parser.break_llm_response_parts(response)
+                thoughts, non_thinking_response = parsed_result
+                num_thinking_tokens = len(thinking_parser.tokenizer.encode(thoughts, add_special_tokens=False))
+                num_non_thinking_tokens = len(thinking_parser.tokenizer.encode(non_thinking_response,
+                                                                               add_special_tokens=False))
+                logger.debug(f"Final thinking tokens length: {num_thinking_tokens}.  "
+                             f"Non-thinking tokens length: {num_non_thinking_tokens}")
             else:
                 response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
             if verbose:
