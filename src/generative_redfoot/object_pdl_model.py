@@ -24,16 +24,17 @@ in how generative AI actions and capabilities can be composed and orchestrated.
 
 '''
 
-import io
 import logging
-import os
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
+from pathlib import Path
 from pprint import pprint
 from typing import Any
 
 from fastapi import UploadFile
+
+from generative_redfoot.pdf_text import extract_pdf_text
 
 
 def pretty_print_list(my_list, sep=', ', and_char=', & '):
@@ -464,97 +465,36 @@ class PDFRead(PDLObject, PDLStructuredBlock):
         return f"PDFRead('{self.read_mode}' from '{self.read_from}' [{self.descriptive_text()}])"
 
     def execute(self, context: dict, verbose: bool = False):
-        try:
-            import pymupdf
-        except ImportError:
-            raise ImportError('PDF reading requires the pymupdf package to be installed') from None
-
         via_ocr = self.read_mode in ['PDF_filename_ocr', 'PDF_raw_read_ocr']
-
+        source = self.resolve_references(context)
         if self.read_mode in ['PDF_filename_ocr', 'PDF_filename_txt']:
-            # Handle file path reading
             if verbose:
                 logging.debug(f'Reading PDF content ({self.read_mode}) from filename (in context or given)')
-            file_name = self.resolve_references(context)
-
-            # Validate the file path
-            if not file_name:
+            if not source:
                 raise ValueError('PDF file path is empty or None')
-            if not os.path.exists(file_name):
-                raise FileNotFoundError(f'PDF file does not exist: {file_name}')
-
-            # Open file with explicit filetype to avoid MuPDF error
-            with pymupdf.open(file_name) as doc:
-                content = self._extract_content(doc, via_ocr)
-        else:
-            # Handle raw content reading
-            raw_content = self.resolve_references(context)
-            if verbose:
-                logging.debug(
-                    f'Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) provided in context)'
-                )
-
-            if isinstance(raw_content, UploadFile):
-                raw_content = raw_content.file.read()
-            elif isinstance(raw_content, str):
-                # Check if it's actually a file path
-                # Only treat as file path if it's not already the raw PDF content as a string
-                # This prevents confusion between file paths and actual raw PDF byte strings
-                if os.path.exists(raw_content) and len(raw_content) <= 1000 and not raw_content.startswith('%PDF-'):
-                    # It's a valid file path, read the file content as bytes for consistent processing
-                    with open(raw_content, 'rb') as f:
-                        raw_content = f.read()
-                else:
-                    # It's raw content or a non-existent path, convert to bytes
-                    raw_content = raw_content.encode('utf-8')
-            elif not isinstance(raw_content, (bytes, bytearray)):
-                # Convert other types to bytes
-                raw_content = str(raw_content).encode('utf-8')
-
-            # Open from bytes stream with explicit filetype to ensure PDF format is recognized
-            # The "cannot find document handler for file type: ''" error occurs when PyMuPDF can't detect the format
             try:
-                # First try direct stream approach
-                with pymupdf.open(stream=raw_content, filetype='pdf') as doc:
-                    content = self._extract_content(doc, via_ocr)
-            except Exception as e:
-                error_str = str(e)
-                if 'no objects found' in error_str or ('FzError' in str(type(e)) and 'code=7' in error_str):
-                    raise ValueError('The provided PDF content is invalid or corrupted and cannot be processed') from e
-                elif 'cannot find document handler for file type' in error_str or (
-                    'FzError' in str(type(e)) and 'code=6' in error_str
-                ):
-                    # When direct bytes stream fails, try using a temporary file approach
-                    import tempfile
+                file_bytes = Path(source).read_bytes()
+            except FileNotFoundError:
+                raise FileNotFoundError(f'PDF file does not exist: {source}') from None
+        else:
+            if verbose:
+                logging.debug(f'Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) in context')
+            file_bytes = self._pdf_bytes(source)
+        self._handle_execution_contribution(extract_pdf_text(file_bytes, via_ocr), context)
 
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                        tmp_file.write(raw_content)
-                        tmp_file_path = tmp_file.name
-
-                    try:
-                        with pymupdf.open(tmp_file_path) as doc:
-                            content = self._extract_content(doc, via_ocr)
-                    finally:
-                        # Clean up the temporary file
-                        os.unlink(tmp_file_path)
-                else:
-                    raise
-
-        self._handle_execution_contribution(content, context)
-
-    def _extract_content(self, doc, via_ocr: bool):
-        '''Helper method to extract content from a PDF document.'''
-        import re
-
-        out = io.StringIO()
-        for page in doc:  # iterate the document pages
-            if via_ocr:
-                # For OCR, we need to get the text from the textpage
-                textpage = page.get_textpage_ocr()
-                out.write(re.sub(r'\s+', ' ', page.get_text(textpage=textpage)))
-            else:
-                out.write(page.get_text())
-        return out.getvalue()
+    @staticmethod
+    def _pdf_bytes(raw: Any) -> bytes:
+        '''Coerce whatever the context holds (upload, bytes, text, a path) into PDF bytes'''
+        if isinstance(raw, UploadFile):
+            return raw.file.read()
+        if isinstance(raw, str):
+            # A short string naming an existing file is a path (not PDF content that happens to be a str)
+            if len(raw) <= 1000 and not raw.startswith('%PDF-') and Path(raw).is_file():
+                return Path(raw).read_bytes()
+            return raw.encode('utf-8')
+        if isinstance(raw, bytes | bytearray):
+            return bytes(raw)
+        return str(raw).encode('utf-8')
 
     def resolve_references(self, context: dict) -> Any:
         if self.read_from and isinstance(self.read_from, dict):

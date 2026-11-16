@@ -13,6 +13,9 @@
 - Unit tests for the loader, loom block, caching / generation logic, and the service; integration tests for mlx
 
 ### Changed
+- PDF extraction is one bytes-based function (`pdf_text.py`) shared by all `PDF_*` blocks, modeled on another project's
+  `_extract_document_text`: timing log, whitespace-normalized OCR, SHA-256-keyed in-memory result cache, and a clear
+  message when Tesseract (needed by the `*_ocr` modes) is missing; install instructions (Homebrew, apt, pixi) in the README
 - Synced with current mlx-lm (>=0.32) and WordLoom (>=0.10.1); requires Python 3.12+; hatchling build
 - MLX blocks moved out of the CLI closure into `extensions/mlx.py`; the CLI is now thin and `build_app` is testable
 - Prefix caching follows the mlx-lm convention (`continue_final_message`, only the suffix is sent). **Prefix cache
@@ -26,6 +29,7 @@
   one at a time in a worker thread
 
 ### Removed
+- Temp-file fallback for opening PDFs (the byte stream is now opened with an explicit filetype)
 - Toolio integration (`structured_output` blocks)
 - Dependencies on `ogbujipt`, `transformers` (transitive via mlx-lm), `pytest`, `tqdm`
 

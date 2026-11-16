@@ -45,7 +45,7 @@ Repository = 'https://github.com/chimezie/generative_redfoot'
 pdf = ['pymupdf']
 gemma_aps = ['nltk']
 alpha_one = ['alpha-one-mlx']
-dev = ['pytest', 'ruff', 'httpx']
+dev = ['pytest', 'ruff', 'httpx', 'pymupdf']
 
 [tool.pytest.ini_options]
 testpaths = ['tests']

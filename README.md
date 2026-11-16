@@ -63,7 +63,7 @@ on other platforms.)
 
 ```commandline
 uv pip install .                 # core: PDL interpreter, mlx-lm, WordLoom, FastAPI service
-uv pip install '.[pdf]'          # + PDF reading via PyMuPDF
+uv pip install '.[pdf]'          # + PDF reading via PyMuPDF (OCR modes also need Tesseract, see [OCR requires Tesseract](#ocr-requires-tesseract))
 uv pip install '.[gemma_aps]'    # + nltk for the proposition-segmentation model
 uv pip install '.[alpha_one]'    # + Alpha One reasoning
 ```
@@ -425,7 +425,30 @@ The enhanced PDF processing includes robust error handling and content validatio
 - **UploadFile Support**: Direct integration with FastAPI's UploadFile objects for web services
 - **Content Type Detection**: Proper handling of different PDF content types
 - **OCR and Text Extraction**: Supports both direct text extraction and OCR processing for scanned documents
-- **Temporary File Handling**: Fallback mechanism for problematic PDF files that PyMuPDF can't process directly
+- **One extraction path**: every mode reads the PDF into bytes and extracts through a single function (`pdf_text.py`),
+  as follows: the document is opened from the byte stream, OCR is applied
+  page by page with whitespace collapsed to single spaces (compact for prompts), and the time taken is logged
+- **Result cache**: extracted text is memoized in memory by the SHA-256 of the PDF bytes (and the mode), so the same
+  document is only OCR'd once per process.  Up to 32 documents are kept (least recently used dropped); text larger
+  than 1 MiB is not cached
+- **Corrupt input**: unreadable PDF content raises a clear `ValueError`
+
+#### OCR requires Tesseract
+
+The `*_ocr` modes use PyMuPDF's OCR, which runs [Tesseract](https://github.com/tesseract-ocr/tesseract); install it on
+the system and make sure `tesseract` is on your `PATH`:
+
+```commandline
+brew install tesseract                      # macOS (Homebrew)
+apt install tesseract-ocr                   # Debian / Ubuntu
+# or, with pixi (verified on an Apple Silicon Studio):
+export PATH="$HOME/.pixi/bin:$PATH"
+pixi global install --platform osx-arm64 -c conda-forge tesseract
+```
+
+If PyMuPDF cannot find the language data, point `TESSDATA_PREFIX` at its `tessdata` folder.  Without Tesseract, the
+error says so.  PDFs that already contain a text layer need no OCR:
+use `PDF_filename_txt` / `PDF_raw_read_txt`.
 
 ### Draft Model Support
 
@@ -580,7 +603,7 @@ include files you trust.
 uv pip install '.[dev,pdf]'
 ruff check .          # lint (do not run `ruff format`; it rewrites the single-quoted docstrings)
 pytest                # fast, deterministic unit tests; no Apple hardware needed
-pytest -m integration # real mlx-lm and PDF/OCR tests; Apple Silicon only
+pytest -m integration # real mlx-lm (Apple Silicon only) and OCR tests (need Tesseract; they skip without it)
 ```
 
 See [AGENTS.md](AGENTS.md) for conventions.  Layout:
@@ -592,6 +615,7 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 | `src/generative_redfoot/extensions/mlx.py` | `content_model`, `model`, `APSModel` |
 | `src/generative_redfoot/generation.py` | `MLXBackend` (the only code that imports mlx), `InMemoryBackend` test double, sampling / cache helpers |
 | `src/generative_redfoot/prompts.py` | shared Wordloom loader |
+| `src/generative_redfoot/pdf_text.py` | PDF text / OCR extraction and its result cache |
 | `src/generative_redfoot/cli.py` | CLI, cache bootstrap, `build_app` (FastAPI) |
 
 ## Upgrading from 0.2

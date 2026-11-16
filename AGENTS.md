@@ -11,6 +11,7 @@ mlx-lm, loads prompts from WordLoom TOML files, and can serve a PDL program as a
 - `src/generative_redfoot/prompts.py`: shared WordLoom loader (the only place loom files are opened)
 - `src/generative_redfoot/generation.py`: `MLXBackend` (the only module importing `mlx`/`mlx_lm`), `InMemoryBackend`
   (real fake for tests), `GenerationDefaults`, and pure helpers
+- `src/generative_redfoot/pdf_text.py`: PyMuPDF text/OCR extraction (needs system Tesseract for OCR) and its cache
 - `src/generative_redfoot/extensions/loom.py`: `read_from_wordloom` block
 - `src/generative_redfoot/extensions/mlx.py`: `content_model` (cache prep), `model`, `APSModel` blocks
 - `src/generative_redfoot/cli.py`: click CLI, cache bootstrap, FastAPI service (`build_app`)
