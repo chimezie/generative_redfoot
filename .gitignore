@@ -1,0 +1,13 @@
+__pycache__/
+*.egg-info/
+dist/
+.idea/
+.obsidian/
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.safetensors
+xfer.zip
+notes.txt
+src/generative_redfoot/cli.orig.py
+/prompt-declaration-language/

@@ -1,102 +1,114 @@
 [build-system]
-requires = ["setuptools>=67.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ['hatchling']
+build-backend = 'hatchling.build'
 
 [project]
-name = "generative_redfoot"
-version = "0.2"
+name = 'generative_redfoot'
+version = '0.3.0'
 dependencies = [
-    "pyaml",
-    "click",
-    "tqdm",
-    "ogbujipt",
-    "mlx>=0.26.3",
-    "mlx-lm>=0.26.0",
-    "wordloom",
-    "pytest",
-    "transformers"
+    'pyyaml',
+    'click',
+    'wordloom>=0.10.1',
+    'mlx-lm>=0.32.2',  # brings in mlx (Darwin only) and transformers
+    'fastapi',
+    'uvicorn',
+    'python-multipart',  # needed by fastapi for form/file uploads
 ]
-description = "A generative, conversational workflow and multi-agent system using PDL and mlx"
-readme = "README.md"
-requires-python = ">=3.10"
-license = {file = "LICENSE"}
+description = 'A generative, conversational workflow and multi-agent system using PDL and mlx'
+readme = 'README.md'
+requires-python = '>=3.12'
+license = {file = 'LICENSE'}
 keywords = []
 authors = [
-  { name = "Chimezie Ogbuji", email = "chimezie@gmail.com" }
+  { name = 'Chimezie Ogbuji', email = 'chimezie@gmail.com' }
 ]
 
 classifiers = [
-  "Development Status :: 4 - Beta",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: Implementation :: PyPy",
+  'Development Status :: 4 - Beta',
+  'Programming Language :: Python',
+  'Programming Language :: Python :: 3.12',
+  'Programming Language :: Python :: 3.13',
+  'Programming Language :: Python :: Implementation :: CPython',
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.build.targets.wheel]
+packages = ['src/generative_redfoot']
 
 [project.scripts]
-generative_redfoot = "generative_redfoot.cli:main"
+generative_redfoot = 'generative_redfoot.cli:main'
 
 [project.urls]
-Homepage = "https://github.com/chimezie/generative_redfoot"
-Repository = "https://github.com/chimezie/generative_redfoot"
+Homepage = 'https://github.com/chimezie/generative_redfoot'
+Repository = 'https://github.com/chimezie/generative_redfoot'
 
 [project.optional-dependencies]
-gemma_aps  = ["nltk"]
+pdf = ['pymupdf']
+gemma_aps = ['nltk']
+alpha_one = ['alpha-one-mlx']
+dev = ['pytest', 'ruff', 'httpx']
+
+[tool.pytest.ini_options]
+testpaths = ['tests']
+markers = ['integration: needs MLX hardware, model downloads, or other unowned services']
+addopts = '-m "not integration"'
 
 [tool.ruff]
-target-version = "py310"
+target-version = 'py312'
 line-length = 120
 
 [tool.ruff.lint]
 # Comprehensive suite: Style (E/W), Logic (F), Imports (I), Naming (N),
-# Modern Python (UP), Bugbear (B), and Security (S)
+# Modern Python (UP), Bugbear (B), Quotes (Q), and Security (S)
 select = [
-    "E", "W",
-    "F",
-    "I",
-    "N",
-    "UP",
-    "B",
-    "S"
+    'E', 'W',
+    'F',
+    'I',
+    'N',
+    'UP',
+    'B',
+    'Q',
+    'S'
 ]
 
 ignore = [
     # Format-friendly spacing (avoids clashes with formatters)
-    "E203",
-    "E231",
+    'E203',
+    'E231',
     # Allow empty methods in abstract base classes
-    "B027",
+    'B027',
     # Allow boolean positional values in function calls like dict.get(..., True)
-    "FBT003",
+    'FBT003',
     # Relax strict module naming for legacy directory structures
-    "N999",
-    "N813",
+    'N999',
+    'N813',
 ]
 
 # Safety net: Never let Ruff auto-delete code it *thinks* is unused
 unfixable = [
-    "F401",
+    'F401',
 ]
 
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = 'single'
+multiline-quotes = 'single'
+docstring-quotes = 'single'
+
+[tool.ruff.format]
+quote-style = 'single'
+
 [tool.ruff.lint.isort]
-known-first-party = ["generative_redfoot"]  # Update this with your actual package name
+known-first-party = ['generative_redfoot']
 
 [tool.ruff.lint.flake8-tidy-imports]
-ban-relative-imports = "all"
+ban-relative-imports = 'all'
 
 [tool.ruff.lint.per-file-ignores]
-# 1. Test flexibility: Allow assertions, magic values, relative imports, and long lines in tests
-"tests*/**/*" = ["PLR2004", "S101", "S105", "S106", "S603", "TID252", "E501"]
-"conftest.py" = ["S101"]
+# Test flexibility: Allow assertions, magic values, relative imports, and long lines in tests
+'tests*/**/*' = ['PLR2004', 'S101', 'S105', 'S106', 'S603', 'TID252', 'E501']
+'conftest.py' = ['S101']
 
-# 2. Package initializers: Allow top-level import ordering exceptions
-"__init__.py" = ["E402"]
+# Package initializers: Allow top-level import ordering exceptions
+'__init__.py' = ['E402']
 
-# 3. Legacy domain exceptions (from Config 1)
-#"lib/fuxi/DLP/__init__.py" = ["N802"]
-#"lib/fuxi/SPARQL/service.py" = ["N803"]
-
-# 4. Notebooks: Allow long lines in Jupyter cells
-"*.ipynb" = ["E501"]
+# Notebooks: Allow long lines in Jupyter cells
+'*.ipynb' = ['E501']

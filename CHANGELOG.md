@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.3.0] - 20261116
+
+### Added
+- `AGENTS.md` with project conventions; `.gitignore`
+- `prompts.py`: shared WordLoom loader (cached by file mtime, file-inclusion enabled, lexical path resolution)
+- `generation.py`: `MLXBackend` (the only module that touches mlx / mlx-lm) and an `InMemoryBackend` test double
+- `--trust-remote-code` option (default off), passed through to mlx-lm
+- `enable_thinking` model parameter, passed to the chat template
+- README: installation, sampling parameters, block reference, cache modes, request handling, environment variables,
+  development and upgrade notes; `design_patterns.md` section on owned boundaries / testability
+- Unit tests for the loader, loom block, caching / generation logic, and the service; integration tests for mlx
+
+### Changed
+- Synced with current mlx-lm (>=0.32) and WordLoom (>=0.10.1); requires Python 3.12+; hatchling build
+- MLX blocks moved out of the CLI closure into `extensions/mlx.py`; the CLI is now thin and `build_app` is testable
+- Prefix caching follows the mlx-lm convention (`continue_final_message`, only the suffix is sent). **Prefix cache
+  files from earlier versions must be regenerated.**
+- Internal cache (`cache: '*'`) tracks the tokens it holds and sends only new ones, trimming or rebuilding as needed
+- `read_from_wordloom`: bare filenames now resolve under `prompts/` (use `./name.toml` for the old behavior); items
+  with markers are rendered through WordLoom (file-inclusion supported)
+- `kv_bits` now defaults to no quantization (as documented); `kv-bits` is accepted with a warning
+- `--top-k` default is 0 (disabled)
+- Models are cached by the backend instead of being reloaded for every block / request; the service runs requests
+  one at a time in a worker thread
+
+### Removed
+- Toolio integration (`structured_output` blocks)
+- Dependencies on `ogbujipt`, `transformers` (transitive via mlx-lm), `pytest`, `tqdm`
+
+### Fixed
+- A plain-string `input:` on a model block (used in documented examples) raised an error; it is now a user message
+- `top_p` was ignored outside Alpha-One generation
+- Service crashed on a default `log_level`; final-message `assert` replaced by a 500 response; debug prints removed
+- Undeclared dependencies on `fastapi`, `uvicorn`, `python-multipart`; wrong `pyaml` package name
+
 ## [0.2] - 20251119
 
 ### Added
