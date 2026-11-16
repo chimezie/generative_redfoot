@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import shutil
 
 import pytest
 import yaml
@@ -101,6 +102,7 @@ def test_mixed_role_to_result():
     p.execute()
 
 @pytest.mark.integration  # needs pymupdf and OCR support
+@pytest.mark.skipif(shutil.which('tesseract') is None, reason='OCR needs tesseract (brew install tesseract)')
 def test_pdf_and_long_string():
     pdl = PDL.replace('__TEST_PDF__', str(pathlib.Path(__file__).parent / 'Test.pdf'))
     dispatcher = ParseDispatcher()
