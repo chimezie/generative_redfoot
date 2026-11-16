@@ -394,12 +394,15 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                                      prompt_cache=self.program.cache,
                                      draft_model=draft_model)
                 parsed_result = thinking_parser.break_llm_response_parts(response)
-                thoughts, non_thinking_response = parsed_result
-                num_thinking_tokens = len(thinking_parser.tokenizer.encode(thoughts, add_special_tokens=False))
-                num_non_thinking_tokens = len(thinking_parser.tokenizer.encode(non_thinking_response,
-                                                                               add_special_tokens=False))
-                logger.debug(f"Final thinking tokens length: {num_thinking_tokens}.  "
-                             f"Non-thinking tokens length: {num_non_thinking_tokens}")
+                if parsed_result:
+                    thoughts, non_thinking_response = parsed_result
+                    num_thinking_tokens = len(thinking_parser.tokenizer.encode(thoughts, add_special_tokens=False))
+                    num_non_thinking_tokens = len(thinking_parser.tokenizer.encode(non_thinking_response,
+                                                                                   add_special_tokens=False))
+                    logger.debug(f"Final thinking tokens length: {num_thinking_tokens}.  "
+                                 f"Non-thinking tokens length: {num_non_thinking_tokens}")
+                else:
+                    logger.warning(f"Unable to discern thinking tokens from {len(response):,} characters")
             else:
                 response, prompt = self.generate(messages, tokenizer, model, verbose=verbose)
             if verbose:
@@ -426,10 +429,14 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                       truncate_long_text(msg["content"]))
             else:
                 print("Generating response ... ")
+            if "<think>" in msg["content"]:
+                print("Removing <think> tags from input ...")
+                msg["content"] = msg["content"].split("</think>")[-1].strip()
             msg["content"] = create_propositions_input(msg["content"])
             msg["role"] = "user"
             response, prompt = self.generate([msg], tokenizer, model, verbose=verbose)
             response = process_propositions_output(response)
+            print("Response", response)
             self._handle_execution_contribution(response, context)
             if "context" not in self.contribute:
                 if verbose:
@@ -651,6 +658,7 @@ def main(temperature, repetition_penalty, top_k, top_p, max_tokens, min_p, verbo
                 elapsed_minutes = int(elapsed_time // 60)
                 logger.info(f"Request {request_id}: Completed in {elapsed_minutes} minutes")
 
+                print("***********"*10)
                 final_msg = initial_context['_'][-1]
                 assert final_msg['role'] == 'assistant'
                 return Response(final_msg['content'], media_type="text/plain")

@@ -44,3 +44,59 @@ Repository = "https://github.com/chimezie/generative_redfoot"
 
 [project.optional-dependencies]
 gemma_aps  = ["nltk"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+# Comprehensive suite: Style (E/W), Logic (F), Imports (I), Naming (N),
+# Modern Python (UP), Bugbear (B), and Security (S)
+select = [
+    "E", "W",
+    "F",
+    "I",
+    "N",
+    "UP",
+    "B",
+    "S"
+]
+
+ignore = [
+    # Format-friendly spacing (avoids clashes with formatters)
+    "E203",
+    "E231",
+    # Allow empty methods in abstract base classes
+    "B027",
+    # Allow boolean positional values in function calls like dict.get(..., True)
+    "FBT003",
+    # Relax strict module naming for legacy directory structures
+    "N999",
+    "N813",
+]
+
+# Safety net: Never let Ruff auto-delete code it *thinks* is unused
+unfixable = [
+    "F401",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["generative_redfoot"]  # Update this with your actual package name
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# 1. Test flexibility: Allow assertions, magic values, relative imports, and long lines in tests
+"tests*/**/*" = ["PLR2004", "S101", "S105", "S106", "S603", "TID252", "E501"]
+"conftest.py" = ["S101"]
+
+# 2. Package initializers: Allow top-level import ordering exceptions
+"__init__.py" = ["E402"]
+
+# 3. Legacy domain exceptions (from Config 1)
+#"lib/fuxi/DLP/__init__.py" = ["N802"]
+#"lib/fuxi/SPARQL/service.py" = ["N803"]
+
+# 4. Notebooks: Allow long lines in Jupyter cells
+"*.ipynb" = ["E501"]
