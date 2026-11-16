@@ -1,5 +1,7 @@
 # Generative Redfoot
-A generative, conversational workflow and multi-agent system using PDL and [mlx](https://github.com/ml-explore/mlx-examples/tree/main/llms)
+A generative, conversational workflow and multi-agent system using [PDL](https://github.com/IBM/prompt-declaration-language)
+and [mlx-lm](https://github.com/ml-explore/mlx-lm): declarative YAML programs that chain local LLM calls, with prompt
+libraries ([WordLoom](https://github.com/OoriData/WordLoom)), PDF input, prompt caching, and one-file web services.
 
 ## Table of Contents
 - [Introduction](#generative-redfoot)
@@ -9,6 +11,7 @@ A generative, conversational workflow and multi-agent system using PDL and [mlx]
 - [Usage](#usage)
   - [Sampling parameters](#sampling-parameters)
   - [Block reference](#block-reference)
+- [PDL compatibility](#pdl-compatibility)
 - [Caching](#caching)
 - [Service Deployment](#service-deployment)
 - [Extensions](#extensions)
@@ -22,6 +25,7 @@ A generative, conversational workflow and multi-agent system using PDL and [mlx]
 - [Environment variables](#environment-variables)
 - [Development and testing](#development-and-testing)
 - [Upgrading from 0.2](#upgrading-from-02)
+- [Roadmap](#roadmap)
 
 For a detailed explanation of design patterns enabled by Generative Redfoot, see the [Design Patterns](design_patterns.md) documentation.
 
@@ -63,10 +67,13 @@ on other platforms.)
 
 ```commandline
 uv pip install .                 # core: PDL interpreter, mlx-lm, WordLoom, FastAPI service
-uv pip install '.[pdf]'          # + PDF reading via PyMuPDF (OCR modes also need Tesseract, see [OCR requires Tesseract](#ocr-requires-tesseract))
+uv pip install '.[pdf]'          # + PDF reading via PyMuPDF (OCR modes also need Tesseract, see below)
 uv pip install '.[gemma_aps]'    # + nltk for the proposition-segmentation model
 uv pip install '.[alpha_one]'    # + Alpha One reasoning
 ```
+
+The OCR modes of [PDF reading](#pdf-reading) need the Tesseract system package; see
+[OCR requires Tesseract](#ocr-requires-tesseract).
 
 `uv pip install` installs into the *active* virtual environment (`$VIRTUAL_ENV`), whereas `uv run` uses the project's
 own `.venv/`; install and run in the same one.
@@ -174,6 +181,36 @@ role are merged into one when the surrounding `text` block finishes.
 A model block's `input` may be a block (as in `input: {text: [...]}`) or a plain string, which is added to the context
 as a user message.  `structured_output` blocks (Toolio) were removed in 0.3.
 
+## PDL compatibility
+
+Generative Redfoot implements a deliberately small subset of PDL plus its own extensions.  Programs written for it are
+not, in general, portable to IBM's [reference interpreter](https://github.com/IBM/prompt-declaration-language), and
+vice versa.  What to expect:
+
+| PDL feature | Status here |
+|---|---|
+| `description`, `text`, `role`, `contribute`, `def` | supported (see the notes below) |
+| `model` with `parameters` and `input` | supported, evaluated locally with mlx-lm (no LiteLLM / remote platforms) |
+| `read` | standard input, or a file named by a `{ $variable }` reference.  A literal filename (`read: ./file.txt`) is **not** read yet |
+| `repeat` / `until` | only the form `until: "${ variable == 'value' }"`; no `for`, `while`, `maxIterations`, `join` |
+| `${ ... }` Jinja expressions | **not supported** (outside that one `until` form).  Variables are referenced with the non-standard `{ $variable }` and through Wordloom markers |
+| `defs` | parsed but **not evaluated** |
+| `if` / `match`, `lastOf`, `array`, `object`, `data`, `message`, `include` / `import` | not supported |
+| `parser`, `spec`, `retry`, `fallback`, `expectations` | not supported |
+| `code`, `function` / `call`, `map`, aggregators, tracing | not supported |
+
+Behavioral differences worth knowing:
+
+- A nested block does **not** inherit its parent's `role`; set `role` on the block that needs it.
+- Adjacent text contributions are merged into the latest message, and consecutive same-role messages are merged when a
+  `text` block finishes.
+- `def` binds the result of leaf blocks (`read`, `model`, PDF and Wordloom blocks), not of a `text` block.
+- Unknown keys in a block are ignored rather than rejected, so check spelling.
+- Extensions that are not PDL: `read_from_wordloom`, `PDF_*`, `APSModel`, `content_model`, `cot_prefix`, `draft_model`,
+  `alpha_one`, the top-level `cache` and `server` sections.
+
+Closing the cheapest of these gaps is the subject of the [roadmap](#roadmap).
+
 ## Caching
 
 Generative Redfoot includes advanced caching capabilities for efficient inference:
@@ -262,15 +299,9 @@ messages do not begin with the cached prefix, a warning is logged and the model 
 > **Upgrading:** prefix cache files made by earlier versions lack the metadata needed for this and must be
 > regenerated (a clear error says so).
 
-These caches can be referenced in model blocks:
-
-```yaml
-text:
-  - model: chat_cache
-    parameters:
-      temperature: 0.7
-      max_tokens: 500
-```
+An **external** cache file is different: `cache: my_prompt.safetensors` (for example one made with
+`mlx_lm.cache_prompt`) is loaded for each model evaluation and treated as a prefix to the program's prompts, which are
+sent in full.  See mlx-lm's [prompt caching](https://github.com/ml-explore/mlx-lm/blob/main/README.md#long-prompts-and-generations).
 
 ## Service Deployment
 
@@ -340,16 +371,6 @@ text:
     - PDF_raw_read_ocr: { $file }
       contribute: [context]
 ```
-
-### Caching (summary)
-A PDL program can use mlx-lm's [Prompt caching](https://github.com/ml-explore/mlx-lm/blob/main/README.md#long-prompts-and-generations)
-by specifying a top-level `cache` parameter at the top of the PDL document.  If the value of this parameter is _'*'_, 
-then an internal K/V cache is used for the duration of the PDL evaluation for efficiency; each model call sends only
-the tokens that the cache does not already hold (it is trimmed or rebuilt if the conversation diverges).
-
-Otherwise, the value is expected to be the path to a previously saved cache, created using `mlx_lm.cache_prompt` for 
-example (or the cache preparation capabilities described above), which is treated as a cached prompt that is a prefix to 
-any prompts specified in the program. 
 
 ## Extensions
 
@@ -425,9 +446,9 @@ The enhanced PDF processing includes robust error handling and content validatio
 - **UploadFile Support**: Direct integration with FastAPI's UploadFile objects for web services
 - **Content Type Detection**: Proper handling of different PDF content types
 - **OCR and Text Extraction**: Supports both direct text extraction and OCR processing for scanned documents
-- **One extraction path**: every mode reads the PDF into bytes and extracts through a single function (`pdf_text.py`),
-  as follows: the document is opened from the byte stream, OCR is applied
-  page by page with whitespace collapsed to single spaces (compact for prompts), and the time taken is logged
+- **One extraction path**: every mode reads the PDF into bytes and extracts through a single function
+  (`pdf_text.py`): the document is opened from the byte stream, OCR is applied page by page with whitespace collapsed
+  to single spaces (compact for prompts), and the time taken is logged
 - **Result cache**: extracted text is memoized in memory by the SHA-256 of the PDF bytes (and the mode), so the same
   document is only OCR'd once per process.  Up to 32 documents are kept (least recently used dropped); text larger
   than 1 MiB is not cached
@@ -584,7 +605,7 @@ reading from a wordloom file, using Google's [__google/gemma-7b-aps-it__](https:
 model to perform ["abstractive proposition segmentation"](https://arxiv.org/abs/2406.19803) from LLM output, 
 etc.:
 
-<img src="complex_pdl.png" alt="Animated GIF of PDL chatbot."/>
+<img src="complex_pdl.png" alt="Annotated PDL program chaining LLM calls with Wordloom prompts, CoT prefix, caching and an APS model."/>
 
 ## Environment variables
 
@@ -628,3 +649,16 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 - `kv_bits` defaults to no quantization (it was 4); the misspelling `kv-bits` still works but warns.
 - `top_p` now applies to normal generation (it was only used by Alpha One).
 - A plain-string `input:` on a model block now works.
+
+## Roadmap
+
+Planned next, in order, all pure-Python and without changes to the mlx layer:
+
+1. **Expressions and variables**: PDL's `${ ... }` Jinja expressions, evaluated `defs`, `def` on every block, `read` of
+   literal filenames relative to the PDL file, and rejection of unknown block keys.
+2. **Structured output and control flow**: `parser` (`json`, `yaml`, `jsonl`, `regex`) with `spec` validation, `retry` /
+   `fallback`, `if` / `then` / `else`, and `repeat` with `for`, `while` and `maxIterations`.
+3. **Composition**: `lastOf`, `data`, `array`, `object`, `include`, and role inheritance.
+
+Separately: revisiting [Alpha One](#alpha-one-reasoning) against current alpha-one-mlx.  Not planned: `code` blocks and
+functions (arbitrary code in a served program needs a sandbox first), remote model platforms, tracing UI.

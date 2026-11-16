@@ -1,8 +1,8 @@
 '''
 PDF text extraction via PyMuPDF, shared by every `PDF_*` block.
 
-Approach: open the document from bytes, run OCR page by page (collapsing
-whitespace so the text is compact enough for a prompt), time it, and memoize the result by SHA-256 of the bytes.
+Opens the document from bytes, runs OCR page by page (collapsing whitespace so the text is compact enough for a
+prompt), times it, and memoizes the result by SHA-256 of the bytes.
 
 OCR (`get_textpage_ocr`) is performed by Tesseract, which must be installed on the system (macOS:
 `brew install tesseract`; Debian/Ubuntu: `apt install tesseract-ocr`) or located via `TESSDATA_PREFIX`.

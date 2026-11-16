@@ -4,7 +4,7 @@ build-backend = 'hatchling.build'
 
 [project]
 name = 'generative_redfoot'
-version = '0.3.0'
+dynamic = ['version']  # read from src/generative_redfoot/__init__.py
 dependencies = [
     'pyyaml',
     'click',
@@ -18,7 +18,7 @@ description = 'A generative, conversational workflow and multi-agent system usin
 readme = 'README.md'
 requires-python = '>=3.12'
 license = {file = 'LICENSE'}
-keywords = []
+keywords = ['llm', 'pdl', 'prompt declaration language', 'mlx', 'wordloom', 'prompt programming']
 authors = [
   { name = 'Chimezie Ogbuji', email = 'chimezie@gmail.com' }
 ]
@@ -26,10 +26,15 @@ authors = [
 classifiers = [
   'Development Status :: 4 - Beta',
   'Programming Language :: Python',
+  'Operating System :: MacOS',
+  'Topic :: Scientific/Engineering :: Artificial Intelligence',
   'Programming Language :: Python :: 3.12',
   'Programming Language :: Python :: 3.13',
   'Programming Language :: Python :: Implementation :: CPython',
 ]
+
+[tool.hatch.version]
+path = 'src/generative_redfoot/__init__.py'
 
 [tool.hatch.build.targets.wheel]
 packages = ['src/generative_redfoot']
@@ -40,6 +45,7 @@ generative_redfoot = 'generative_redfoot.cli:main'
 [project.urls]
 Homepage = 'https://github.com/chimezie/generative_redfoot'
 Repository = 'https://github.com/chimezie/generative_redfoot'
+Changelog = 'https://github.com/chimezie/generative_redfoot/blob/main/CHANGELOG.md'
 
 [project.optional-dependencies]
 pdf = ['pymupdf']

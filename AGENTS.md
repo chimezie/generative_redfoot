@@ -23,8 +23,20 @@ mlx-lm, loads prompts from WordLoom TOML files, and can serve a PDL program as a
 uv pip install '.[dev,pdf]'
 ruff check .
 pytest                   # unit only (default)
-pytest -m integration    # real mlx-lm; Apple Silicon only
+pytest -m integration    # real mlx-lm (Apple Silicon only) and OCR (needs Tesseract; skips without it)
 ```
+
+The working tree usually lives on a Linux box where mlx cannot run: run lint and unit tests there, and ask the owner
+to run `pytest -m integration` and CLI smoke tests on the Apple Studio. The owner makes all git commits and pushes;
+suggest commands instead of running them.
+
+## Releases
+
+- The version lives only in `src/generative_redfoot/__init__.py` (`pyproject.toml` reads it via hatch).
+- Every user-visible change gets a `CHANGELOG.md` line; breaking changes also go in README "Upgrading from ...".
+- Keep README "PDL compatibility" and "Roadmap" in step with what the interpreter actually supports; do not document
+  planned features as present.
+- A `v*` tag triggers the PyPI publish workflow.
 
 ## Platform note
 
