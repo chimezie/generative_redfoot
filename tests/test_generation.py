@@ -189,6 +189,28 @@ def test_internal_cache_with_draft_model_is_built_with_draft_layers():
     assert p.kv_state['cache'].has_draft
 
 
+def test_failed_generation_resets_the_cache_ledger():
+    class FailingOnce(InMemoryBackend):
+        failed = False
+
+        def generate(self, *args, **kwargs):
+            if not self.failed:
+                self.failed = True
+                cache = kwargs['cache']
+                cache.tokens.extend(args[2])  # the cache consumed the prompt before the failure
+                raise RuntimeError('interrupted')
+            return super().generate(*args, **kwargs)
+
+    backend = FailingOnce(['ok'])
+    p = program_from(INTERNAL, backend)
+    with pytest.raises(RuntimeError, match='interrupted'):
+        p.execute()
+    assert p.kv_state['tokens'] is None  # ledger no longer trusted
+    p.text[1].execute(p.evaluation_environment)  # the retry rebuilds the cache and resends the whole prompt
+    assert backend.calls[0]['cache_len_before'] == 0
+    assert backend.calls[0]['tokens'] == b('<|user|>Hello<|end|><|assistant|>')
+
+
 # --- named (content_model) prefix cache -----------------------------------------------------------------------------
 
 def cache_pdl(file, extra=''):

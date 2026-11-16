@@ -40,14 +40,27 @@ def _resolve(loom_path) -> tuple[Path, Path]:
 
 
 @lru_cache(maxsize=16)
-def _cached_load(path_str: str, mtime_ns: int, base_dir_str: str) -> dict:  # mtime_ns only keys the cache
+def _cached_load(path_str: str, signature: tuple, base_dir_str: str) -> dict:  # signature only keys the cache
     return wordloom.load(Path(path_str), lang='en', features={'file-inclusion'}, base_dir=Path(base_dir_str))
+
+
+def _signature(abs_path: Path) -> tuple:
+    '''
+    Cache key part: mtimes of the loom file and of every file beside or below it, since `file:` / `glob:` / `dir:`
+    inclusions usually live there and must invalidate the parsed result when edited. (Inclusions elsewhere under the
+    base directory are not tracked; call clear_cache() after editing those.)
+    '''
+    stamps = [(abs_path.name, abs_path.stat().st_mtime_ns)]  # raises FileNotFoundError if the loom is missing
+    for entry in sorted(abs_path.parent.rglob('*')):
+        if entry.is_file() and not any(part.startswith('.') for part in entry.relative_to(abs_path.parent).parts):
+            stamps.append((entry.relative_to(abs_path.parent).as_posix(), entry.stat().st_mtime_ns))
+    return tuple(stamps)
 
 
 def load_file(loom_path, *, base_dir=None) -> dict:
     abs_path, default_base = _resolve(loom_path)
     bdir = Path(base_dir).resolve() if base_dir else default_base
-    return _cached_load(str(abs_path), abs_path.stat().st_mtime_ns, str(bdir))
+    return _cached_load(str(abs_path), _signature(abs_path), str(bdir))
 
 
 def _section_keys(items: dict) -> list[str]:

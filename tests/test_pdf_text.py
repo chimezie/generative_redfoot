@@ -122,3 +122,12 @@ def test_ocr_from_file_and_bytes_agree(pymupdf):
     by_bytes = run_pdf_block('PDF_raw_read_ocr', '{ $doc }', {'doc': TEST_PDF.read_bytes()})
     assert by_file == by_bytes and 'quick brown fox' in by_file
     assert '\n' not in by_file  # OCR text is whitespace-normalized
+
+
+def test_pages_are_never_glued_together(pymupdf):
+    doc = pymupdf.open()
+    for text in ('the patient', 'was admitted'):
+        doc.new_page().insert_text((72, 72), text)
+    extracted = pdf_text.extract_pdf_text(doc.tobytes(), ocr=False)
+    assert 'patientwas' not in extracted
+    assert extracted.split() == ['the', 'patient', 'was', 'admitted']

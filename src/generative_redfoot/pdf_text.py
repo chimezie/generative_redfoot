@@ -84,6 +84,7 @@ def extract_pdf_text(file_bytes: bytes, ocr: bool, cache: TextCache | None = Non
         raise ImportError('PDF reading requires the pymupdf package to be installed') from None
 
     out = io.StringIO()
+    tail = ''  # last character written so far
     start = time.perf_counter()
     try:
         # The explicit filetype lets PyMuPDF open a bare byte stream (it has no filename to infer the format from)
@@ -91,9 +92,13 @@ def extract_pdf_text(file_bytes: bytes, ocr: bool, cache: TextCache | None = Non
             for page in doc:
                 if ocr:
                     textpage = page.get_textpage_ocr()
-                    out.write(normalize_ocr_text(page.get_text(textpage=textpage)))
+                    page_text = normalize_ocr_text(page.get_text(textpage=textpage))
                 else:
-                    out.write(page.get_text())
+                    page_text = page.get_text()
+                if tail and not tail.isspace() and not page_text[:1].isspace():
+                    out.write('\n')  # never glue the last word of a page to the first word of the next
+                out.write(page_text)
+                tail = page_text[-1:] or tail
     except Exception as e:  # PyMuPDF's FileDataError is a RuntimeError too, so sort everything out in one place
         error_str = str(e).lower()
         corrupt = isinstance(e, getattr(pymupdf, 'FileDataError', ())) or 'no objects found' in error_str

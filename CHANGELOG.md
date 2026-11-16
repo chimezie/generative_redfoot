@@ -34,6 +34,12 @@
 - Dependencies on `ogbujipt`, `transformers` (transitive via mlx-lm), `pytest`, `tqdm`
 
 ### Fixed
+- Internal cache ledger is discarded when a generation fails, so the next call rebuilds instead of trusting a stale cache
+- Wordloom cache also invalidates when files beside / below the loom (`file:` inclusions) change
+- PDF pages are no longer glued together (`patient` + `was` -> `patientwas`)
+- `items:` tolerates repeated or trailing whitespace; the APS block downloads nltk data once per process
+- The service runs generation on one dedicated worker thread (MLX streams are thread-local) and logs seconds, not minutes
+- `draft_model` on a `content_model` block is ignored with a warning; the draft-cache error explains the alternative
 - A plain-string `input:` on a model block (used in documented examples) raised an error; it is now a user message
 - `top_p` was ignored outside Alpha-One generation
 - Service crashed on a default `log_level`; final-message `assert` replaced by a 500 response; debug prints removed

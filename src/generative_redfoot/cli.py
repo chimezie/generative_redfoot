@@ -12,6 +12,8 @@ import asyncio
 import logging
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import click
@@ -90,6 +92,8 @@ def build_app(
     logger = logger or logging.getLogger(f'{__name__}.generative_redfoot_service')
     base_context = base_context or {}
     generation_lock = asyncio.Lock()  # MLX generation runs one request at a time
+    # One fixed worker thread: MLX streams are thread-local, so all model work for every request stays on it
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='redfoot-generation')
     app = FastAPI()
 
     @app.post(server_config['path'])
@@ -148,12 +152,13 @@ def build_app(
             logger.debug(f'Request {request_id}: Named K/V caches (& corresponding cache file): {cache_lookup}')
             # Model work is blocking; run it off the event loop (one request at a time, in a single worker thread)
             async with generation_lock:
-                await asyncio.to_thread(request_program.execute, verbose=verbose)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(executor, partial(request_program.execute, verbose=verbose))
         except Exception as e:
             logger.error(f'Request {request_id}: Error loading or executing PDL program: {e}')
             logger.exception(f'Request {request_id}: Full traceback for PDL program error:')
             raise HTTPException(status_code=500, detail=f'Error loading or executing PDL program: {e}') from e
-        logger.info(f'Request {request_id}: Completed in {int((time.time() - start_time) // 60)} minutes')
+        logger.info(f'Request {request_id}: Completed in {time.time() - start_time:.1f} seconds')
 
         messages = request_program.evaluation_environment.get('_') or []
         if not messages or messages[-1]['role'] != 'assistant':

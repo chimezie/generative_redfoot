@@ -90,3 +90,11 @@ def test_cache_picks_up_edits(root):
     path.write_text(LOOM.replace('Literal', 'Changed'))
     os.utime(path, ns=(1, path.stat().st_mtime_ns + 10_000_000))  # make the mtime change unambiguous
     assert str(prompts.load('a.loom.toml', 'plain')).startswith('Changed')
+
+
+def test_edit_to_included_file_invalidates_cache(root):
+    assert prompts.load('a.loom.toml', 'with_file').render() == 'Notes: NOTE TEXT'
+    note = root / 'prompts' / 'notes.md'
+    note.write_text('CHANGED')
+    os.utime(note, ns=(1, note.stat().st_mtime_ns + 10_000_000))
+    assert prompts.load('a.loom.toml', 'with_file').render() == 'Notes: CHANGED'

@@ -7,6 +7,7 @@ Prefix caching follows the mlx-lm convention: the cached prefix is rendered with
 and at evaluation time only the text after that prefix is sent to the model.
 '''
 
+import functools
 import json
 import logging
 import re
@@ -31,11 +32,17 @@ END_MARKER = '</s>'
 SEPARATOR = '\n'
 
 
-def create_propositions_input(text: str) -> str:
+@functools.cache  # each download checks the nltk index over the network, so do it once per process
+def _ensure_nltk_data():
     import nltk  # noqa: PLC0415
 
     nltk.download('punkt', quiet=True)
     nltk.download('punkt_tab', quiet=True)  # newer nltk releases look for this resource instead
+    return nltk
+
+
+def create_propositions_input(text: str) -> str:
+    nltk = _ensure_nltk_data()
     sents = nltk.tokenize.sent_tokenize(text)
     return ''.join(f'{START_MARKER} {sent} {END_MARKER}{SEPARATOR}' for sent in sents).strip(SEPARATOR)
 
@@ -67,6 +74,8 @@ class CachePrep(PDLModel):
 
     def __init__(self, content: Mapping, program: PDLProgram):
         super().__init__(content, program)
+        if self.draft_model:
+            logger.warning('draft_model is ignored for content_model: prefix caches are built without a draft model')
         self.name = content['name']
         self.prefix_marker = content.get('prefix_marker')
         self.file = content['file']
@@ -187,7 +196,8 @@ class MLXModelEvaluationBase(PDLModel):
         ):
             raise ValueError(
                 f'Prompt cache {ctx.file} was created without the draft model, so it cannot be used '
-                'with draft_model (speculative decoding)'
+                "with draft_model (speculative decoding); prefix caches cannot be built with a draft model, use "
+                "`cache: '*'` (internal cache) with draft_model instead"
             )
         return model, tokenizer, ctx
 
@@ -237,9 +247,14 @@ class MLXModelEvaluationBase(PDLModel):
                 f'Sending {len(tokens):,} tokens ({cached_tokens:,} already cached) to {self.model}; '
                 f'parameters: {self.parameters}'
             )
-        text, generated = backend.generate(
-            model, tokenizer, tokens, sampling, cache=cache, draft_model=ctx.draft, verbose=verbose
-        )
+        try:
+            text, generated = backend.generate(
+                model, tokenizer, tokens, sampling, cache=cache, draft_model=ctx.draft, verbose=verbose
+            )
+        except BaseException:
+            if ctx.kind == 'internal':
+                ctx.state['tokens'] = None  # the cache may hold a partial generation; force a rebuild next time
+            raise
         if ctx.kind == 'internal':
             # The cache holds a prefix of prompt + generated tokens; trust the cache's own length over assumptions
             seq, length = full + generated, backend.cache_length(cache)

@@ -465,7 +465,8 @@ text:
 ```
 
 Draft models must have the same vocabulary size as the main model and can significantly improve generation speed.
-A prefix cache file used with a draft model must have been created with it; otherwise an error is raised.
+Prefix caches (`content_model`) cannot be built with a draft model (it is ignored with a warning), so combining a named
+prefix cache with `draft_model` raises an error; use the internal cache (`cache: "*"`) with `draft_model` instead.
 
 ### Alpha One Reasoning
 

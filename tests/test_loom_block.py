@@ -81,3 +81,9 @@ def test_prefix_marker_passthrough(program_for):
     p = program_for('prefixed', {'document_text': '{document_text}'})
     p.execute()
     assert p.evaluation_environment['_'][0]['content'] == 'Instructions. {document_text}'
+
+
+def test_items_tolerate_extra_whitespace(program_for):
+    p = program_for('plain   with_file\n')
+    p.execute()
+    assert p.evaluation_environment['_'][0]['content'] == 'Literal {braces} stay\nNotes: NOTE TEXT'

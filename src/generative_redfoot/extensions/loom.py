@@ -28,7 +28,7 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         return f"Wordloom('{self.language_items}' from {self.loom_file} [{self.descriptive_text()}])"
 
     def execute(self, context: dict, verbose: bool = False):
-        names = self.language_items.split(' ')
+        names = self.language_items.split()
         entries = [(name, prompts.load(self.loom_file, name)) for name in names]  # path rules live in prompts.py
         if verbose:
             print(f'Expanding {names} from {self.loom_file}')
