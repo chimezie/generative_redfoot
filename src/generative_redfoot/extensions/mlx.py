@@ -256,7 +256,7 @@ class MLXModelEvaluationBase(PDLModel):
         if verbose:
             print(
                 f'Sending {len(tokens):,} tokens ({cached_tokens:,} already cached) to {self.model}; '
-                f'parameters: {self.parameters}'
+                f'parameters: {parameters}'
             )
         try:
             text, generated = backend.generate(
@@ -347,7 +347,7 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
         prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         wait_words = self.alpha_one.get('wait_words', configuration.slow_thinking_stop_words)
         if verbose:
-            print(f'Using parameters: {self.parameters} and {self.alpha_one} for {self.model}')
+            print(f'Using parameters: {parameters} and {self.alpha_one} for {self.model}')
         response = alpha_one(
             model,
             tokenizer,
