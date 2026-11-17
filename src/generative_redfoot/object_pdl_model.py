@@ -25,7 +25,6 @@ in how generative AI actions and capabilities can be composed and orchestrated.
 '''
 
 import logging
-import re
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
@@ -48,7 +47,6 @@ def pretty_print_list(my_list, sep=', ', and_char=', & '):
     )
 
 
-UNTIL_PATTERN = re.compile(r"^\$\{\s*(?P<variable>[^\s]+)\s+==\s*'(?P<value>[^']+)'\s*\}")
 DEFAULT_READ_MESSAGE = 'How can I help you?: '
 
 PDL = '''
@@ -400,32 +398,95 @@ class PDLRead(PDLObject, PDLStructuredBlock):
 
 
 class PDLRepeat(PDLObject, PDLStructuredBlock):
+    '''
+    Repeats its body, and returns the joined result of the iterations.
+
+    At least one stopping rule is required: `until` (checked after each iteration), `while` (checked before each
+    iteration), `for` (one iteration per position of the given lists) or `maxIterations`. `until` and `while` are
+    expressions that must evaluate to a boolean. `index` names the zero-based iteration counter. `for` values may be
+    expressions and every list must have the same length.
+    '''
+
     def __init__(self, content: Mapping, program):
         self.program = program
         self.body = self.program.dispatcher.handle(content['repeat'], self.program)
-        self.until = content['until']
+        self.until = content.get('until')
+        self.while_condition = content.get('while')
+        self.for_items = content.get('for')
+        self.max_iterations = content.get('maxIterations')
+        self.index_name = content.get('index')
+        stopping_rules = (self.until, self.while_condition, self.for_items, self.max_iterations)
+        if all(rule is None for rule in stopping_rules):
+            raise ValueError('repeat requires at least one of until, while, for or maxIterations')
         self._get_common_attributes(content)
 
     def __repr__(self):
-        return f'PDLRepeat({self.body} UNTIL {self.until} [{self.descriptive_text()}])'
+        rules = [
+            f'UNTIL {self.until}' if self.until is not None else '',
+            f'WHILE {self.while_condition}' if self.while_condition is not None else '',
+            f'FOR {self.for_items}' if self.for_items is not None else '',
+            f'MAX {self.max_iterations}' if self.max_iterations is not None else '',
+        ]
+        return f'PDLRepeat({self.body} {" ".join(rule for rule in rules if rule)} [{self.descriptive_text()}])'
 
     def __getitem__(self, index: int):
         return self.body[index]
 
+    def _evaluate_for_items(self, context: dict) -> dict | None:
+        '''Evaluate the `for` lists once, before the loop, and require them to be equally long'''
+        if self.for_items is None:
+            return None
+        items = evaluate(self.for_items, context)
+        if not isinstance(items, Mapping):
+            raise ValueError(f'repeat for must be a mapping of names to lists, got {items!r}')
+        if not items:
+            # An empty `for` has no positions; without another rule the loop could never stop
+            raise ValueError('repeat for must name at least one list')
+        for name, values in items.items():
+            if not isinstance(values, list | tuple):
+                raise ValueError(f'repeat for value {name!r} must be a list, got {values!r}')
+        if len({len(values) for values in items.values()}) > 1:
+            raise ValueError(f'repeat for lists must have the same length, got {items!r}')
+        return items
+
+    def _condition(self, key: str, expression, context: dict) -> bool:
+        '''Evaluate an `until` / `while` expression, which must produce a boolean'''
+        value = evaluate(expression, context)
+        if not isinstance(value, bool):
+            raise ValueError(f'repeat {key} must evaluate to a boolean, got {value!r}')
+        return value
+
     def execute(self, context: Mapping, verbose: bool = False):
         '''
-        Executes the provided action repeatedly until a condition is met based on the values in the provided context.
+        Executes the provided action repeatedly until a stopping rule is met based on the values in the context.
 
-        Continues to execute its body until the specified variable in the context matches the target value as defined
-        by the `until` condition.  The evaluation of the until expression determines the stopping criteria
+        The body runs while `while` holds, for every position of `for`, at most `maxIterations` times, and stops as
+        soon as `until` becomes true. `index` is bound to the zero-based iteration number at the start of each turn.
         '''
         self._execute_defs(context, verbose)
-        results = [self.body.execute(context, verbose=verbose)]
-        until_pattern_groups = UNTIL_PATTERN.match(self.until)
-        variable_name = until_pattern_groups.group('variable')
-        value = until_pattern_groups.group('value')
-        while value != context[variable_name]:
+        for_items = self._evaluate_for_items(context)
+        length = len(next(iter(for_items.values()))) if for_items else None
+        max_iterations = evaluate(self.max_iterations, context) if self.max_iterations is not None else None
+        if max_iterations is not None and (not isinstance(max_iterations, int) or isinstance(max_iterations, bool)):
+            raise ValueError(f'repeat maxIterations must be an integer, got {max_iterations!r}')
+        results = []
+        index = 0
+        while True:
+            if max_iterations is not None and index >= max_iterations:
+                break
+            if length is not None and index >= length:
+                break
+            if self.index_name is not None:
+                context[self.index_name] = index  # only iterations that run bind an index
+            if self.while_condition is not None and not self._condition('while', self.while_condition, context):
+                break
+            if for_items:
+                for name, values in for_items.items():
+                    context[name] = values[index]
             results.append(self.body.execute(context, verbose=verbose))
+            index += 1
+            if self.until is not None and self._condition('until', self.until, context):
+                break
         joined = ''.join(result if isinstance(result, str) else str(result) for result in results if result is not None)
         if self.var_def:
             context[self.var_def] = joined
