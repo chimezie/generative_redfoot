@@ -24,6 +24,7 @@ in how generative AI actions and capabilities can be composed and orchestrated.
 
 '''
 
+import difflib
 import logging
 import sys
 from abc import ABC, abstractmethod
@@ -48,6 +49,27 @@ def pretty_print_list(my_list, sep=', ', and_char=', & '):
 
 
 DEFAULT_READ_MESSAGE = 'How can I help you?: '
+
+# Keys every block may carry, in addition to the ones its own class declares in KEYS
+COMMON_KEYS = frozenset({'description', 'def', 'defs', 'role', 'contribute'})
+
+
+def validate_block_keys(item: Mapping, klass, extra_keys=()):
+    '''
+    Reject keys a block class does not declare. Classes that do not declare KEYS (extensions written outside this
+    repository) are left unchecked, so adding a block should not silently break existing programs.
+    '''
+    declared = klass.__dict__.get('KEYS')
+    if declared is None:
+        return
+    allowed = COMMON_KEYS | set(declared) | set(extra_keys)
+    unknown = [key for key in item if key not in allowed]
+    if not unknown:
+        return
+    key = unknown[0]
+    close = difflib.get_close_matches(str(key), sorted(allowed), n=1)
+    hint = f'did you mean {close[0]!r}?' if close else f'valid keys: {", ".join(sorted(allowed))}'
+    raise ValueError(f'Unknown key {key!r} for block type {klass.__name__}; {hint}')
 
 PDL = '''
 description: chatbot
@@ -289,6 +311,8 @@ class PDLText(TextCollator, PDLStructuredBlock):
 
     '''
 
+    KEYS = frozenset({'text'})
+
     def __init__(self, content: Any, program: PDLObject):
         super().__init__(content['text'], program)
         self._get_common_attributes(content)
@@ -351,6 +375,8 @@ class PDLText(TextCollator, PDLStructuredBlock):
 
 
 class PDLRead(PDLObject, PDLStructuredBlock):
+    KEYS = frozenset({'read', 'message', 'multiline'})
+
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
         self.read_from = pdl_block.get('read')
@@ -415,6 +441,8 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
     expressions that must evaluate to a boolean. `index` names the zero-based iteration counter. `for` values may be
     expressions and every list must have the same length.
     '''
+
+    KEYS = frozenset({'repeat', 'until', 'while', 'for', 'maxIterations', 'index'})
 
     def __init__(self, content: Mapping, program):
         self.program = program
@@ -533,6 +561,7 @@ class PDLModel(PDLObject, PDLStructuredBlock):
     default_role = 'assistant'
     inherits_role = False  # a model block is the assistant unless it says otherwise
     MODEL_KEY = 'model'
+    KEYS = frozenset({'model', 'input', 'parameters', 'alpha_one', 'draft_model', 'cot_prefix'})
 
     def __init__(self, content: Mapping, program):
         self.program = program
@@ -594,6 +623,8 @@ class PDFRead(PDLObject, PDLStructuredBlock):
     and resolved based on content, enabling the capabilities described in the project
     documentation's Extensions section.
     '''
+
+    KEYS = frozenset(PDF_READ_MODES)
 
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
@@ -681,6 +712,7 @@ class ParseDispatcher:
             for klass in self.DISPATCH_RESOLUTION_ORDER:
                 obj = klass.dispatch_check(item, program)
                 if obj is not None:
+                    validate_block_keys(item, klass)
                     return obj
             raise RuntimeError(f'Unknown block type: {item}')
 
@@ -750,8 +782,10 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
     '''
 
     INTERNAL_CACHE_NAME = '*'
+    KEYS = frozenset({'text'})  # the top level also accepts `cache` and `server`, passed as extra keys
 
     def __init__(self, pdl: dict, dispatcher: ParseDispatcher = None, initial_context: dict = None, base_dir=None):
+        validate_block_keys(pdl, PDLProgram, extra_keys=('cache', 'server'))
         if dispatcher is None:
             self.dispatcher = ParseDispatcher()
         else:

@@ -72,6 +72,10 @@ class CachePrep(PDLModel):
     '''
 
     MODEL_KEY = 'content_model'
+    KEYS = frozenset({
+        'content_model', 'name', 'file', 'prefix_marker', 'kv_bits', 'kv-bits', 'kv_group_size',
+        'quantized_kv_start', 'max_kv_size', 'input', 'parameters', 'alpha_one', 'draft_model', 'cot_prefix',
+    })
 
     def __init__(self, content: Mapping, program: PDLProgram):
         super().__init__(content, program)
@@ -148,6 +152,8 @@ class MLXModelEvaluationBase(PDLModel):
     - `cache: <file>`: the saved cache is loaded for each evaluation and the program's prompt is sent in full;
     - otherwise no cache.
     '''
+
+    KEYS = PDLModel.KEYS
 
     def _load(self, verbose: bool = False, parameters: dict | None = None):
         '''Returns (model, tokenizer, ctx) where ctx describes the cache in play (ctx.kind, ctx.cache, ...)'''
@@ -274,6 +280,8 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
     The response is contributed back to the context per the block's `contribute` setting.
     '''
 
+    KEYS = PDLModel.KEYS
+
     def execute(self, context: dict, verbose: bool = False):
         self._execute_defs(context, verbose)
         parameters = evaluate(self.parameters, context)
@@ -377,6 +385,7 @@ class MLXAPSModel(MLXModelEvaluationBase):
     '''Extracts propositions from the last message with Google's gemma-7b-aps-it (`APSModel:` block)'''
 
     MODEL_KEY = 'APSModel'
+    KEYS = frozenset({'APSModel', 'input', 'parameters', 'alpha_one', 'draft_model', 'cot_prefix'})
 
     def execute(self, context: dict, verbose: bool = False):
         self._execute_defs(context, verbose)

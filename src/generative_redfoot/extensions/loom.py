@@ -18,6 +18,8 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         Wordloom('question answer' from file.loom [outputs to context as user])
     '''
 
+    KEYS = frozenset({'read_from_wordloom', 'items'})
+
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
         self.loom_file = pdl_block['read_from_wordloom']
