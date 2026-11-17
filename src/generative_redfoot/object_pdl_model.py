@@ -34,6 +34,7 @@ from typing import Any
 
 from fastapi import UploadFile
 
+from generative_redfoot.expressions import evaluate, resolve_variable_reference
 from generative_redfoot.pdf_text import extract_pdf_text
 
 
@@ -48,7 +49,6 @@ def pretty_print_list(my_list, sep=', ', and_char=', & '):
 
 
 UNTIL_PATTERN = re.compile(r"^\$\{\s*(?P<variable>[^\s]+)\s+==\s*'(?P<value>[^']+)'\s*\}")
-VAR_REFERENCE_PATTERN = re.compile(r'^\$(?P<variable>[^\s]+)\s*$')
 
 PDL = '''
 description: chatbot
@@ -271,13 +271,13 @@ class PDLText(TextCollator, PDLStructuredBlock):
         ''''''
         content = ''
         if isinstance(self.content, str):
-            self.merge_content(context, self.content)
+            self.merge_content(context, evaluate(self.content, context))
             if 'result' in self.contribute:
                 pprint(self.content)
         else:
             for item in self.content:
                 if isinstance(item, str):
-                    self.merge_content(context, item)
+                    self.merge_content(context, evaluate(item, context))
                     if 'result' in self.contribute:
                         pprint(content)
                 else:
@@ -326,19 +326,17 @@ class PDLRead(PDLObject, PDLStructuredBlock):
             return f"PDLRead( from '{self.read_from}' [{self.descriptive_text()}])"
 
     def execute(self, context: dict, verbose: bool = False):
+        read_from = resolve_variable_reference(self.read_from, context)
+        if read_from is self.read_from:  # an ordinary value written in the PDL file, so expressions apply
+            read_from = evaluate(read_from, context)
         if self.read_from and isinstance(self.read_from, dict):
-            var_reference_group = VAR_REFERENCE_PATTERN.match(list(self.read_from)[0])
-            if var_reference_group:
-                variable_name = var_reference_group.group('variable')
-                file_name = context[variable_name]
-            else:
-                file_name = self.read_from
+            file_name = read_from
             if verbose:
                 logging.debug(f'Reading {file_name} from context')
             with open(file_name) as file:
                 content = file.read()
         else:
-            content = input(self.message + ' ')
+            content = input(evaluate(self.message, context) + ' ')
         self._handle_execution_contribution(content, context)
 
     @staticmethod
@@ -497,15 +495,9 @@ class PDFRead(PDLObject, PDLStructuredBlock):
         return str(raw).encode('utf-8')
 
     def resolve_references(self, context: dict) -> Any:
-        if self.read_from and isinstance(self.read_from, dict):
-            var_reference_group = VAR_REFERENCE_PATTERN.match(list(self.read_from)[0])
-            if var_reference_group:
-                variable_name = var_reference_group.group('variable')
-                content = context[variable_name]
-            else:
-                content = self.read_from
-        else:
-            content = self.read_from
+        content = resolve_variable_reference(self.read_from, context)
+        if content is self.read_from:  # an ordinary value written in the PDL file, so expressions apply
+            content = evaluate(content, context)
         return content
 
     @staticmethod

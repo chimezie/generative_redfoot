@@ -14,6 +14,7 @@ import re
 from collections.abc import Mapping
 from types import SimpleNamespace
 
+from generative_redfoot.expressions import evaluate
 from generative_redfoot.generation import (
     common_prefix_len,
     insert_cot_messages,
@@ -93,6 +94,7 @@ class CachePrep(PDLModel):
 
     def execute(self, context: dict, verbose: bool = False):
         backend = self.program.backend
+        parameters = evaluate(self.parameters, context)
         messages = context.get('_') or []
         users = [m for m in messages if m['role'] == 'user']
         if len(users) != 1:
@@ -103,8 +105,8 @@ class CachePrep(PDLModel):
             if verbose:
                 print(f"Separating at prefix marker: {self.prefix_marker}: '.. {users[0]['content'][-20:]}'")
         template_kwargs = {}
-        if self.parameters.get('enable_thinking') is not None:
-            template_kwargs['enable_thinking'] = self.parameters['enable_thinking']
+        if parameters.get('enable_thinking') is not None:
+            template_kwargs['enable_thinking'] = parameters['enable_thinking']
         model, tokenizer = backend.load(self.model, {})
         # The prefix is left open (no end-of-turn / generation prompt) so the request text continues it
         prefix_prompt = tokenizer.apply_chat_template(
@@ -146,11 +148,12 @@ class MLXModelEvaluationBase(PDLModel):
     - otherwise no cache.
     '''
 
-    def _load(self, verbose: bool = False):
+    def _load(self, verbose: bool = False, parameters: dict | None = None):
         '''Returns (model, tokenizer, ctx) where ctx describes the cache in play (ctx.kind, ctx.cache, ...)'''
         program, backend = self.program, self.program.backend
         ctx = SimpleNamespace(kind=None, cache=None, metadata=None, state=None, draft=None, file=None)
-        eos_token = self.parameters.get('eos_token')
+        parameters = self.parameters if parameters is None else parameters
+        eos_token = parameters.get('eos_token')
         tokenizer_config = {'eos_token': eos_token} if eos_token else {}
         model_path = self.model
         if self.model in program.cache_lookup:  # cache created by a content_model block: it names its own model
@@ -201,10 +204,11 @@ class MLXModelEvaluationBase(PDLModel):
             )
         return model, tokenizer, ctx
 
-    def generate(self, messages: list[dict], verbose: bool = False) -> str:
+    def generate(self, messages: list[dict], verbose: bool = False, parameters: dict | None = None) -> str:
         backend = self.program.backend
-        model, tokenizer, ctx = self._load(verbose)
-        sampling = resolve_sampling(self.parameters, self.program.defaults)
+        parameters = self.parameters if parameters is None else parameters
+        model, tokenizer, ctx = self._load(verbose, parameters)
+        sampling = resolve_sampling(parameters, self.program.defaults)
         template_kwargs = json.loads(ctx.metadata.get('template_kwargs', '{}')) if ctx.kind == 'named' else {}
         if sampling['enable_thinking'] is not None:
             template_kwargs['enable_thinking'] = sampling['enable_thinking']
@@ -270,8 +274,9 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
     '''
 
     def execute(self, context: dict, verbose: bool = False):
+        parameters = evaluate(self.parameters, context)
         if isinstance(self.input, str):  # a plain string input is a user message added to the context
-            context.setdefault('_', []).append({'role': 'user', 'content': self.input})
+            context.setdefault('_', []).append({'role': 'user', 'content': evaluate(self.input, context)})
         elif self.input:
             self.input.execute(context, verbose=verbose)
         messages = list(context.get('_') or [])
@@ -289,9 +294,9 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
         else:
             print('Generating response ... ')
         if self.alpha_one:
-            response = self._alpha_one_response(messages, verbose)
+            response = self._alpha_one_response(messages, verbose, parameters)
         else:
-            response = self.generate(messages, verbose=verbose)
+            response = self.generate(messages, verbose=verbose, parameters=parameters)
         if verbose:
             print(f'Executing model: {self.model} using context {context} - (via mlx)-> >\n{response}')
         self._handle_execution_contribution(response, context)
@@ -300,7 +305,7 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
                 print('Clearing context ...')
             context['_'] = []
 
-    def _alpha_one_response(self, messages: list[dict], verbose: bool) -> str:
+    def _alpha_one_response(self, messages: list[dict], verbose: bool, parameters: dict | None = None) -> str:
         '''
         Alpha-One reasoning via alpha_one_mlx. Carried over from the previous implementation; revisiting it against
         current alpha_one_mlx / mlx-lm is deferred (it is a separate effort), so it is unverified.
@@ -312,10 +317,11 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
         )
         from alpha_one_mlx.reasoner import alpha_one  # noqa: PLC0415
 
-        model, tokenizer, ctx = self._load(verbose)
+        parameters = self.parameters if parameters is None else parameters
+        model, tokenizer, ctx = self._load(verbose, parameters)
         if ctx.kind == 'internal':
             ctx.state['tokens'] = None  # alpha-one feeds the cache outside our token ledger
-        sampling = resolve_sampling(self.parameters, self.program.defaults)
+        sampling = resolve_sampling(parameters, self.program.defaults)
         max_tokens = sampling['max_tokens']
         configuration = get_configuration(model.model_type)
         thinking_parser = get_thinking_template_parser(model.model_type, tokenizer)
@@ -380,7 +386,8 @@ class MLXAPSModel(MLXModelEvaluationBase):
             msg['content'] = msg['content'].split('</think>')[-1].strip()
         msg['content'] = create_propositions_input(msg['content'])
         msg['role'] = 'user'
-        response = process_propositions_output(self.generate([msg], verbose=verbose))
+        parameters = evaluate(self.parameters, context)
+        response = process_propositions_output(self.generate([msg], verbose=verbose, parameters=parameters))
         self._handle_execution_contribution(response, context)
         if 'context' not in self.contribute:
             if verbose:
