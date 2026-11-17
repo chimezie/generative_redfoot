@@ -93,6 +93,7 @@ class CachePrep(PDLModel):
             return CachePrep(item, program)
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         backend = self.program.backend
         parameters = evaluate(self.parameters, context)
         messages = context.get('_') or []
@@ -274,6 +275,7 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
     '''
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         parameters = evaluate(self.parameters, context)
         if isinstance(self.input, str):  # a plain string input is a user message added to the context
             context.setdefault('_', []).append({'role': 'user', 'content': evaluate(self.input, context)})
@@ -304,6 +306,7 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
             if verbose:
                 print('Clearing context ...')
             context['_'] = []
+        return response
 
     def _alpha_one_response(self, messages: list[dict], verbose: bool, parameters: dict | None = None) -> str:
         '''
@@ -376,6 +379,7 @@ class MLXAPSModel(MLXModelEvaluationBase):
     MODEL_KEY = 'APSModel'
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         msg = context['_'][-1].copy()
         if verbose:
             print('Extracting individual facts, statements, and ideas from using ', truncate_long_text(msg['content']))
@@ -393,6 +397,7 @@ class MLXAPSModel(MLXModelEvaluationBase):
             if verbose:
                 print('Clearing context ...')
             context['_'] = []
+        return response
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLProgram):

@@ -29,7 +29,6 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
-from pprint import pprint
 from typing import Any
 
 from fastapi import UploadFile
@@ -191,9 +190,29 @@ class PDLStructuredBlock:
                 print(content)
             if 'context' in self.contribute:
                 context.setdefault('_', []).append(msg)
-            if self.var_def:
-                logging.debug(f'Defining variable {self.var_def} with value {content}')
-                context[self.var_def] = content
+        if self.var_def:  # `def` binds the result even when it is empty
+            logging.debug(f'Defining variable {self.var_def} with value {content}')
+            context[self.var_def] = content
+
+    def _execute_defs(self, context: dict, verbose: bool = False):
+        '''
+        Evaluate this block's `defs` (in order) before its own content runs. A value that is a block is executed
+        with `contribute: []` against a copy of the context, so only its result is bound here.
+        '''
+        for name, value in self.defs.items():
+            block = None
+            if isinstance(value, Mapping):
+                try:
+                    block = self.program.dispatcher.handle({**value, 'contribute': []}, self.program)
+                except RuntimeError:  # not a block; treat it as a plain (evaluated) value below
+                    block = None
+            if block is None:
+                context[name] = evaluate(value, context)
+                continue
+            sandbox = dict(context)
+            if '_' in context:
+                sandbox['_'] = [dict(message) for message in context['_']]  # no message leaks back out
+            context[name] = block.execute(sandbox, verbose=verbose)
 
     def descriptive_text(self):
         var_suffix = f' -> ${self.var_def}' if self.var_def else ''
@@ -243,6 +262,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
 
         >>> p.execute(verbose=True)
         Executing: program
+        bar
         'bar'
         >>> p.evaluation_environment
         {'_': [{'role': 'system', 'content': 'foo'}, {'role': 'user', 'content': 'bar'}]}
@@ -268,32 +288,45 @@ class PDLText(TextCollator, PDLStructuredBlock):
         return len(self.content)
 
     def execute(self, context: dict, verbose: bool = False):
-        ''''''
-        content = ''
+        '''Execute the text block and return the joined result of its items'''
+        self._execute_defs(context, verbose)
+        parts = []
         if isinstance(self.content, str):
-            self.merge_content(context, evaluate(self.content, context))
-            if 'result' in self.contribute:
-                pprint(self.content)
+            text = evaluate(self.content, context)
+            self._contribute_string(text, context)
+            parts.append(text)
         else:
             for item in self.content:
                 if isinstance(item, str):
-                    self.merge_content(context, evaluate(item, context))
-                    if 'result' in self.contribute:
-                        pprint(content)
+                    text = evaluate(item, context)
+                    self._contribute_string(text, context)
+                    parts.append(text)
                 else:
-                    result = item.execute(context, verbose=verbose)
-                    if result is not None:
-                        self.merge_content(context, result)
-            merged_context = []
-            previous_item = None
-            for idx, item in enumerate(context.get('_', [])):
-                if idx > 0 and item['role'] == previous_item['role']:
-                    previous_item['content'] += item['content']
-                else:
-                    merged_context.append(item)
-                    previous_item = item
-            context['_'] = merged_context
-        self._handle_execution_contribution(content, context)
+                    result = item.execute(context, verbose=verbose)  # the child contributes itself to the context
+                    if 'result' in getattr(item, 'contribute', []) and result is not None:
+                        parts.append(result)  # the return value is only for this block's result
+            self._merge_adjacent_same_role(context)
+        result = ''.join(part if isinstance(part, str) else str(part) for part in parts)
+        if self.var_def:
+            context[self.var_def] = result
+        return result
+
+    def _contribute_string(self, text: str, context: dict):
+        '''A string item prints / joins the context according to the `contribute` of its containing text block'''
+        if 'result' in self.contribute:
+            print(text)
+        if 'context' in self.contribute:
+            self.merge_content(context, text)
+
+    @staticmethod
+    def _merge_adjacent_same_role(context: dict):
+        merged_context = []
+        for message in context.get('_', []):
+            if merged_context and merged_context[-1]['role'] == message['role']:
+                merged_context[-1]['content'] += message['content']
+            else:
+                merged_context.append(message)
+        context['_'] = merged_context
 
     def merge_content(self, context, item):
         messages = context.setdefault('_', [])
@@ -326,6 +359,7 @@ class PDLRead(PDLObject, PDLStructuredBlock):
             return f"PDLRead( from '{self.read_from}' [{self.descriptive_text()}])"
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         read_from = resolve_variable_reference(self.read_from, context)
         if read_from is self.read_from:  # an ordinary value written in the PDL file, so expressions apply
             read_from = evaluate(read_from, context)
@@ -338,6 +372,7 @@ class PDLRead(PDLObject, PDLStructuredBlock):
         else:
             content = input(evaluate(self.message, context) + ' ')
         self._handle_execution_contribution(content, context)
+        return content
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -365,12 +400,17 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
         Continues to execute its body until the specified variable in the context matches the target value as defined
         by the `until` condition.  The evaluation of the until expression determines the stopping criteria
         '''
-        self.body.execute(context)
+        self._execute_defs(context, verbose)
+        results = [self.body.execute(context, verbose=verbose)]
         until_pattern_groups = UNTIL_PATTERN.match(self.until)
         variable_name = until_pattern_groups.group('variable')
         value = until_pattern_groups.group('value')
         while value != context[variable_name]:
-            self.body.execute(context)
+            results.append(self.body.execute(context, verbose=verbose))
+        joined = ''.join(result if isinstance(result, str) else str(result) for result in results if result is not None)
+        if self.var_def:
+            context[self.var_def] = joined
+        return joined
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -417,12 +457,15 @@ class PDLModel(PDLObject, PDLStructuredBlock):
         return f'PDLModel({self.model} [{self.descriptive_text()}])'
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         source_phrase = ''
         if self.input:
             source_phrase = f' from {self.input}'
         if verbose:
             logging.debug(f'Executing model: {self.model} using {context}{source_phrase}')
-        self._handle_execution_contribution('.. model response ..', context)
+        response = '.. model response ..'
+        self._handle_execution_contribution(response, context)
+        return response
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject) -> PDLObject | None:
@@ -463,6 +506,7 @@ class PDFRead(PDLObject, PDLStructuredBlock):
         return f"PDFRead('{self.read_mode}' from '{self.read_from}' [{self.descriptive_text()}])"
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         via_ocr = self.read_mode in ['PDF_filename_ocr', 'PDF_raw_read_ocr']
         source = self.resolve_references(context)
         if self.read_mode in ['PDF_filename_ocr', 'PDF_filename_txt']:
@@ -478,7 +522,9 @@ class PDFRead(PDLObject, PDLStructuredBlock):
             if verbose:
                 logging.debug(f'Reading PDF content ({self.read_mode}) from bytes ({self.read_from}) in context')
             file_bytes = self._pdf_bytes(source)
-        self._handle_execution_contribution(extract_pdf_text(file_bytes, via_ocr), context)
+        content = extract_pdf_text(file_bytes, via_ocr)
+        self._handle_execution_contribution(content, context)
+        return content
 
     @staticmethod
     def _pdf_bytes(raw: Any) -> bytes:
@@ -627,4 +673,5 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
     def execute(self, verbose: bool = False):
         if verbose:
             print(f'Executing: {self.description}')
-        self.text.execute(self.evaluation_environment, verbose=verbose)
+        # The inner PDLText owns the top-level `defs` / `def`, so they take effect exactly once here
+        return self.text.execute(self.evaluation_environment, verbose=verbose)

@@ -28,6 +28,7 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
         return f"Wordloom('{self.language_items}' from {self.loom_file} [{self.descriptive_text()}])"
 
     def execute(self, context: dict, verbose: bool = False):
+        self._execute_defs(context, verbose)
         names = self.language_items.split()
         entries = [(name, prompts.load(self.loom_file, name)) for name in names]  # path rules live in prompts.py
         if verbose:
@@ -35,6 +36,7 @@ class WorldLoomRead(PDLObject, PDLStructuredBlock):
             print('Loom markers: ', ', '.join(str(entry.markers) for _, entry in entries))
         content = '\n'.join(WorldLoomRead.get_loom_entry(entry, context, name) for name, entry in entries)
         self._handle_execution_contribution(content, context)
+        return content
 
     @staticmethod
     def get_loom_entry(loom_entry, context: Mapping, key: str = '') -> str:
