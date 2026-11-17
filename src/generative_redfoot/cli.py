@@ -51,10 +51,16 @@ def make_dispatcher() -> ParseDispatcher:
 
 
 def make_program(
-    program_yaml: dict, dispatcher, backend, defaults, cache_lookup: dict, initial_context: dict | None = None
+    program_yaml: dict,
+    dispatcher,
+    backend,
+    defaults,
+    cache_lookup: dict,
+    initial_context: dict | None = None,
+    base_dir=None,
 ) -> PDLProgram:
     '''Instantiate a PDL program with the runtime wiring its MLX blocks need'''
-    program = PDLProgram(program_yaml, dispatcher=dispatcher, initial_context=initial_context)
+    program = PDLProgram(program_yaml, dispatcher=dispatcher, initial_context=initial_context, base_dir=base_dir)
     program.backend, program.defaults, program.cache_lookup = backend, defaults, cache_lookup
     return program
 
@@ -84,6 +90,7 @@ def build_app(
     base_context: dict | None = None,
     verbose: bool = False,
     logger: logging.Logger | None = None,
+    base_dir=None,
 ) -> FastAPI:
     '''Create the FastAPI app that runs the PDL program once per POST request (request body -> context marker)'''
     server_config = program_yaml['server']
@@ -147,7 +154,9 @@ def build_app(
         )
         logger.info(f'Request {request_id}: Started processing document of length {len(body_content):,} characters')
         try:
-            request_program = make_program(program_yaml, dispatcher, backend, defaults, cache_lookup, initial_context)
+            request_program = make_program(
+                program_yaml, dispatcher, backend, defaults, cache_lookup, initial_context, base_dir=base_dir
+            )
             logger.debug(f'Request {request_id}: Initial context variable names: {list(initial_context)}')
             logger.debug(f'Request {request_id}: Named K/V caches (& corresponding cache file): {cache_lookup}')
             # Model work is blocking; run it off the event loop (one request at a time, in a single worker thread)
@@ -227,8 +236,9 @@ def main(
     dispatcher = make_dispatcher()
     with open(pdl_file) as file:
         program_yaml = yaml.safe_load(file)
+    base_dir = Path(pdl_file).resolve().parent
     ctx = dict(variables) if variables else {}
-    program = make_program(program_yaml, dispatcher, backend, defaults, {}, ctx)
+    program = make_program(program_yaml, dispatcher, backend, defaults, {}, ctx, base_dir=base_dir)
     cache_lookup = prepare_caches(program, ctx, verbose)
     program.evaluation_environment = ctx
 
@@ -242,7 +252,9 @@ def main(
     logger, log_level = configure_service_logging(server_config)
     if variables:
         logger.debug(f'Using variables: {variables} as initial_context')
-    app = build_app(program_yaml, dispatcher, backend, defaults, cache_lookup, dict(variables), verbose, logger)
+    app = build_app(
+        program_yaml, dispatcher, backend, defaults, cache_lookup, dict(variables), verbose, logger, base_dir=base_dir
+    )
     host, port = server_config['host'], int(server_config['port'])
     logger.info(f'Starting generative redfoot service with config: {pdl_file}')
     logger.info(f'Service will be available at: http://{host}:{port}{server_config["path"]}')

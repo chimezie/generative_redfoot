@@ -26,6 +26,7 @@ in how generative AI actions and capabilities can be composed and orchestrated.
 
 import logging
 import re
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from pathlib import Path
@@ -48,6 +49,7 @@ def pretty_print_list(my_list, sep=', ', and_char=', & '):
 
 
 UNTIL_PATTERN = re.compile(r"^\$\{\s*(?P<variable>[^\s]+)\s+==\s*'(?P<value>[^']+)'\s*\}")
+DEFAULT_READ_MESSAGE = 'How can I help you?: '
 
 PDL = '''
 description: chatbot
@@ -344,13 +346,10 @@ class PDLText(TextCollator, PDLStructuredBlock):
 class PDLRead(PDLObject, PDLStructuredBlock):
     def __init__(self, pdl_block: Mapping, program: PDLObject):
         self.program = program
-        self.read_from = pdl_block['read'] if pdl_block['read'] else None
+        self.read_from = pdl_block.get('read')
+        self.message = pdl_block.get('message')
+        self.multiline = pdl_block.get('multiline', False)
         self._get_common_attributes(pdl_block)
-        if not self.read_from:
-            self.message = pdl_block['message']
-            self.read_from = pdl_block['read']
-        else:
-            self.message = None
 
     def __repr__(self):
         if self.message:
@@ -360,19 +359,39 @@ class PDLRead(PDLObject, PDLStructuredBlock):
 
     def execute(self, context: dict, verbose: bool = False):
         self._execute_defs(context, verbose)
-        read_from = resolve_variable_reference(self.read_from, context)
-        if read_from is self.read_from:  # an ordinary value written in the PDL file, so expressions apply
-            read_from = evaluate(read_from, context)
-        if self.read_from and isinstance(self.read_from, dict):
-            file_name = read_from
+        resolved = resolve_variable_reference(self.read_from, context)
+        if resolved is not self.read_from:  # legacy `{ $name }`: the path is used exactly as it is given
+            file_name = resolved
             if verbose:
                 logging.debug(f'Reading {file_name} from context')
             with open(file_name) as file:
                 content = file.read()
         else:
-            content = input(evaluate(self.message, context) + ' ')
+            read_from = evaluate(self.read_from, context)
+            if read_from:
+                content = self._read_file(read_from)
+            else:
+                message = evaluate(self.message, context) if self.message is not None else DEFAULT_READ_MESSAGE
+                if self.multiline:
+                    print(message)
+                    content = sys.stdin.read()
+                else:
+                    content = input(message)
         self._handle_execution_contribution(content, context)
         return content
+
+    def _read_file(self, read_from) -> str:
+        '''Read a file named in the PDL file (relative paths are relative to the PDL file's directory)'''
+        try:
+            path = Path(read_from)
+        except TypeError as exc:
+            raise ValueError(f'read expects a file path or no value, got {read_from!r}') from exc
+        if not path.is_absolute():
+            path = self.program.base_dir / path
+        try:
+            return path.read_text(encoding='utf-8')
+        except FileNotFoundError:
+            raise FileNotFoundError(f'File not found: {path}') from None
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -651,11 +670,13 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
 
     INTERNAL_CACHE_NAME = '*'
 
-    def __init__(self, pdl: dict, dispatcher: ParseDispatcher = None, initial_context: dict = None):
+    def __init__(self, pdl: dict, dispatcher: ParseDispatcher = None, initial_context: dict = None, base_dir=None):
         if dispatcher is None:
             self.dispatcher = ParseDispatcher()
         else:
             self.dispatcher = dispatcher
+        # Relative paths written in the PDL file resolve from here; the CLI passes the PDL file's directory
+        self.base_dir = Path(base_dir) if base_dir is not None else Path.cwd()
         self.text = PDLText(pdl, self)
         self.cache = pdl.get('cache')
         self._get_common_attributes(pdl)
