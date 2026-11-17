@@ -12,7 +12,7 @@ by PDL programs. This pattern is fundamental to how [Core Concepts](README.md#co
 PDL blocks can be composed declaratively, allowing complex workflows to be defined in YAML without complex programming logic. This includes:
 - Model chaining with different LLMs (as shown in [Usage](README.md#usage) examples)
 - Loop control through `repeat` blocks (`until` / `while` expressions, `for`, `maxIterations`, `index`)
-- Context contribution controls (`contribute: [context, result]`), with nested blocks inheriting their container's role and same-role string contributions merged into one message
+- Context contribution controls (`contribute: [context, result]`), with nested blocks inheriting their container's role; each block reaches a later model as its own message, and same-role text messages are merged when a `text` list finishes
 - Variable expressions using PDL's `${ ... }` syntax (Jinja), with the legacy `{ $variable_name }` form still resolving values from the context (as described in [Variables and Protocol Binding](README.md#variables-and-protocol-binding))
 
 ## 3. Extension-Based Architecture

@@ -34,7 +34,7 @@ from typing import Any
 
 from fastapi import UploadFile
 
-from generative_redfoot.expressions import evaluate, resolve_variable_reference
+from generative_redfoot.expressions import evaluate, resolve_variable_reference, stringify
 from generative_redfoot.pdf_text import extract_pdf_text
 
 
@@ -52,6 +52,20 @@ DEFAULT_READ_MESSAGE = 'How can I help you?: '
 
 # Keys every block may carry, in addition to the ones its own class declares in KEYS
 COMMON_KEYS = frozenset({'description', 'def', 'defs', 'role', 'contribute'})
+
+
+def merge_adjacent_messages(context: dict):
+    '''Merge neighbouring messages that share a role when both contents are strings (other contents stay apart)'''
+    merged = []
+    for message in context.get('_', []):
+        last = merged[-1] if merged else None
+        if last and last['role'] == message['role'] and isinstance(last['content'], str) \
+                and isinstance(message['content'], str):
+            last['content'] += message['content']
+        else:
+            merged.append(message)
+    if '_' in context:
+        context['_'] = merged
 
 
 def validate_block_keys(item: Mapping, klass, extra_keys=()):
@@ -212,14 +226,14 @@ class PDLStructuredBlock:
         if not self.explicit_role and self.inherits_role:
             self.role = inherited_role
 
-    def add_message(self, context: dict, content, role: str | None = None):
+    def add_message(self, context: dict, content, role: str | None = None, merge: bool = False):
         '''
-        Add a contribution to the message list. It merges into the last message when that message has the same role
-        and both contents are strings; anything else becomes a new message.
+        Add a contribution to the message list as a new message. With `merge` (string items of a `text` block), it
+        is appended to the last message instead when that message has the same role and both contents are strings.
         '''
         role = self.role if role is None else role
         messages = context.setdefault('_', [])
-        if messages and messages[-1]['role'] == role:
+        if merge and messages and messages[-1]['role'] == role:
             last = messages[-1]
             if isinstance(last.get('content'), str) and isinstance(content, str):
                 last['content'] += content
@@ -231,23 +245,27 @@ class PDLStructuredBlock:
             if 'result' in self.contribute:
                 print(content)
             if 'context' in self.contribute:
-                self.add_message(context, content)
+                self.add_message(context, content)  # its own message; a list-form text merges neighbours when done
         if self.var_def:  # `def` binds the result even when it is empty
             logging.debug(f'Defining variable {self.var_def} with value {content}')
             context[self.var_def] = content
 
     def _execute_defs(self, context: dict, verbose: bool = False):
         '''
-        Evaluate this block's `defs` (in order) before its own content runs. A value that is a block is executed
-        with `contribute: []` against a copy of the context, so only its result is bound here.
+        Evaluate this block's `defs` (in order) before its own content runs. A legacy `{ $name }` reference binds that
+        variable's value; a value that is a block is executed with `contribute: []` against a copy of the context, so
+        only its result is bound here; anything else is evaluated as an expression. Like PDL, `defs` overwrites
+        variables of the same name (including ones passed in with `-v` or bound from a request).
         '''
         for name, value in self.defs.items():
+            resolved = resolve_variable_reference(value, context)
+            if resolved is not value:
+                context[name] = resolved
+                continue
             block = None
             if isinstance(value, Mapping):
-                try:
-                    block = self.program.dispatcher.handle({**value, 'contribute': []}, self.program)
-                except RuntimeError:  # not a block; treat it as a plain (evaluated) value below
-                    block = None
+                # None means "not a block"; errors from building a block (e.g. a nested typo) propagate
+                block = self.program.dispatcher.build({**value, 'contribute': []}, self.program)
             if block is None:
                 context[name] = evaluate(value, context)
                 continue
@@ -343,20 +361,23 @@ class PDLText(TextCollator, PDLStructuredBlock):
         self._execute_defs(context, verbose)
         parts = []
         if isinstance(self.content, str):
-            text = evaluate(self.content, context)
+            text = stringify(evaluate(self.content, context))  # `${ n }` alone is typed; a text item is text
             self._contribute_string(text, context)
             parts.append(text)
         else:
             for item in self.content:
                 if isinstance(item, str):
-                    text = evaluate(item, context)
+                    text = stringify(evaluate(item, context))
                     self._contribute_string(text, context)
                     parts.append(text)
                 else:
                     result = item.execute(context, verbose=verbose)  # the child contributes itself to the context
                     if 'result' in getattr(item, 'contribute', []) and result is not None:
                         parts.append(result)  # the return value is only for this block's result
-        result = ''.join(part if isinstance(part, str) else str(part) for part in parts)
+            # Each child added its own message, so a model inside this list saw them separately; now that the list
+            # is done, merge neighbouring same-role text messages (the prefix-cache flow relies on this shape)
+            merge_adjacent_messages(context)
+        result = ''.join(map(stringify, parts))
         if self.var_def:
             context[self.var_def] = result
         return result
@@ -366,7 +387,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
         if 'result' in self.contribute:
             print(text)
         if 'context' in self.contribute:
-            self.add_message(context, text)
+            self.add_message(context, text, merge=True)
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -519,7 +540,9 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
             if length is not None and index >= length:
                 break
             if self.index_name is not None:
-                context[self.index_name] = index  # only iterations that run bind an index
+                # Bound before `while` is checked (as in PDL), so `while` can use it; a `while` stop therefore leaves
+                # the index of the iteration that did not run
+                context[self.index_name] = index
             if self.while_condition is not None and not self._condition('while', self.while_condition, context):
                 break
             if for_items:
@@ -529,7 +552,7 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
             index += 1
             if self.until is not None and self._condition('until', self.until, context):
                 break
-        joined = ''.join(result if isinstance(result, str) else str(result) for result in results if result is not None)
+        joined = ''.join(stringify(result) for result in results if result is not None)
         if self.var_def:
             context[self.var_def] = joined
         return joined
@@ -708,13 +731,19 @@ class ParseDispatcher:
         '''
         if isinstance(item, str):
             return item
-        else:
-            for klass in self.DISPATCH_RESOLUTION_ORDER:
-                obj = klass.dispatch_check(item, program)
-                if obj is not None:
-                    validate_block_keys(item, klass)
-                    return obj
+        obj = self.build(item, program)
+        if obj is None:
             raise RuntimeError(f'Unknown block type: {item}')
+        return obj
+
+    def build(self, item: Mapping, program: PDLObject) -> PDLObject | None:
+        '''Build the block for a mapping, or return None when no registered class claims it'''
+        for klass in self.DISPATCH_RESOLUTION_ORDER:
+            obj = klass.dispatch_check(item, program)
+            if obj is not None:
+                validate_block_keys(item, klass)
+                return obj
+        return None
 
 
 class PDLProgram(PDLObject, PDLStructuredBlock):

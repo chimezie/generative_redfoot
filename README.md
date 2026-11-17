@@ -24,7 +24,7 @@ libraries ([WordLoom](https://github.com/OoriData/WordLoom)), PDF input, prompt 
 - [Examples](#examples)
 - [Environment variables](#environment-variables)
 - [Development and testing](#development-and-testing)
-- [Upgrading from 0.3](#upgrading-from-03)
+- [Upgrading: unreleased changes](#upgrading-unreleased-changes)
 - [Upgrading from 0.2](#upgrading-from-02)
 - [Roadmap](#roadmap)
 
@@ -165,15 +165,16 @@ text:
 Every block can also carry `role` (`system`, `user`, `assistant`), `contribute` (`[context, result]` by default;
 `[context]` hides output, `[result]` keeps it out of later prompts), `def` (store the result in a variable), `defs`
 (define variables before the block runs) and `description`.  A block without an explicit `role` inherits its
-container's role; model blocks default to `assistant` and the top level starts at `user`.  A contribution is merged
-into the previous message when that message has the same role and both contents are strings; otherwise it starts a new
-message.
+container's role; model blocks default to `assistant` and the top level starts at `user`.  Each block's contribution
+is its own message, so a model sees the blocks before it as separate turns; string items of one `text` block join the
+previous message when it has the same role, and when a list-form `text` block finishes, neighbouring same-role text
+messages are merged.
 
 | Block | Purpose |
 |---|---|
 | `text` | a string or list of blocks; its result is its items joined in order |
 | `read` | a file, when a value (for example `${ filename }`) is given, or standard input when it is not; `message` (prompt) and `multiline` (read to end of file) apply to standard input.  Relative file paths resolve from the PDL file's directory |
-| `repeat` | loop a body with `until` / `while` expressions (checked after / before each iteration and required to be boolean), `for: {name: [...]}` (one iteration per position), `maxIterations` and `index` (zero-based); there is no `join` |
+| `repeat` | loop a body with `until` / `while` expressions (checked after / before each iteration and required to be boolean), `for: {name: [...]}` (one iteration per position), `maxIterations` and `index` (zero-based, bound before `while` is checked, so a `while` stop leaves the index of the iteration that did not run); there is no `join` |
 | `model` | evaluate a model on the accumulated context; also names a prefix cache (see [Caching](#caching)). Accepts `parameters`, `input`, `cot_prefix`, `draft_model`, `alpha_one` |
 | `read_from_wordloom` + `items` | prompt text from a [Wordloom](#prompt-management-via-wordloom) file |
 | `PDF_filename_txt`, `PDF_filename_ocr`, `PDF_raw_read_txt`, `PDF_raw_read_ocr` | [PDF reading](#pdf-reading) |
@@ -183,7 +184,8 @@ message.
 
 A model block's `input` may be a block (as in `input: {text: [...]}`) or a plain string, which is added to the context
 as a user message.  Every block returns its result; `def` binds it, and `defs` entries are evaluated in order so later
-ones can use earlier ones.  A key a block does not recognise is rejected when the program is built, with a suggestion
+ones can use earlier ones (a `defs` entry overwrites a variable of the same name, including one passed with `-v`
+or bound from a request).  A key a block does not recognise is rejected when the program is built, with a suggestion
 for the closest valid spelling.  `structured_output` blocks (Toolio) were removed in 0.3.
 
 ## PDL compatibility
@@ -207,8 +209,9 @@ Behavioral differences worth knowing:
 
 - A nested block inherits its container's `role` unless it sets `role`; model blocks default to `assistant`, and a
   model's `input` starts from `user`.
-- A contribution merges into the previous message when the roles match and both contents are strings; otherwise it
-  starts a new message.  (The reference interpreter keeps one message per contribution.)
+- A model sees each preceding block's contribution as its own message, as in the reference interpreter.  Unlike the
+  reference, string items of one `text` block join the previous same-role message, and neighbouring same-role text
+  messages are merged when a list-form `text` block finishes (the prefix-cache flow relies on that shape).
 - `def` binds the result of any block, including `text` and `repeat`, and `defs` values are evaluated in order.
 - Unknown keys in a block are rejected when the program is built, naming the closest valid spelling.  A block class
   that declares no keys (an extension written outside this repository) is unchecked.
@@ -371,6 +374,8 @@ which use Jinja syntax:
 - a string containing exactly one `${ ... }` evaluates to that expression's typed value (an int, list, bytes object,
   and so on);
 - a string that mixes text with `${ ... }` is rendered to text;
+- whatever a `text` item or a string model `input` evaluates to is added to the conversation as text (lists and dicts
+  as JSON);
 - lists and dicts written in the PDL file are evaluated recursively;
 - the accumulated message list is available as `pdl_context`.
 
@@ -669,7 +674,10 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 | `src/generative_redfoot/pdf_text.py` | PDF text / OCR extraction and its result cache |
 | `src/generative_redfoot/cli.py` | CLI, cache bootstrap, `build_app` (FastAPI) |
 
-## Upgrading from 0.3
+## Upgrading: unreleased changes
+
+These changes follow 0.3.0 on the development branch; they will be folded into the release notes when they ship.
+
 
 - A literal `${` in a PDL string is now an expression.  Escape or reword any prompt text that contains it.
 - `read: <string>` now reads that file; leave `read:` empty to read standard input.  Relative `read` paths resolve
@@ -677,8 +685,10 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 - `repeat`'s `until` is a full expression and must evaluate to a boolean; the usual
   `until: "${ question == 'quit' }"` form is unchanged.  `repeat` also accepts `while`, `for`, `maxIterations` and
   `index`, and a `repeat` with none of them is an error.
-- Nested blocks now inherit their container's `role`, and a contribution merges into the previous message only when
-  the role matches and both contents are strings.  An assistant reply is no longer extended by the next user turn.
+- Nested blocks now inherit their container's `role`.  A text item no longer extends a message of a different role, so
+  an assistant reply is no longer extended by the next user turn.
+- A `text` item that is exactly one `${ ... }` contributes its value as text (lists and dicts as JSON).
+- `defs` entries overwrite variables of the same name, including ones passed with `-v` or bound from a request.
 - String items in a `text` block now honour that block's `contribute` setting.
 - `def` now binds the result of any block (not only leaf blocks), `defs` is evaluated, and every block returns its
   result.  A list-form `text` prints its strings as plain text.

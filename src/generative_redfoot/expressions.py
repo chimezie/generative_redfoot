@@ -11,6 +11,7 @@ to ever match.
 - Lists and dicts are evaluated recursively; every other type passes through untouched.
 '''
 
+import json
 import re
 from collections.abc import Mapping
 
@@ -88,6 +89,19 @@ def evaluate(value, scope: Mapping):
     if isinstance(value, dict):
         return {key: evaluate(item, scope) for key, item in value.items()}
     return value
+
+
+def stringify(value) -> str:
+    '''Text for a value headed into a message or a joined result: lists/dicts as JSON, bytes decoded, None empty'''
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ''
+    if isinstance(value, bytes | bytearray):
+        return bytes(value).decode('utf-8', errors='replace')
+    if isinstance(value, list | tuple | dict):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return str(value)
 
 
 def resolve_variable_reference(value, scope: Mapping):

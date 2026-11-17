@@ -174,7 +174,7 @@ text:
     ]
 
 
-def test_string_model_input_merges_with_a_previous_user_message():
+def test_string_model_input_is_its_own_message_for_the_model():
     pdl = '''
 description: t
 text:
@@ -192,7 +192,8 @@ text:
         {'role': 'user', 'content': 'Hello there'},
         {'role': 'assistant', 'content': 'A'},
     ]
-    assert backend.calls[0]['tokens'] == b('<|user|>Hello there<|end|><|assistant|>')
+    # The model sees two user turns (as in PDL); the finished list then merges them
+    assert backend.calls[0]['tokens'] == b('<|user|>Hello<|end|><|user|> there<|end|><|assistant|>')
 
 
 def test_list_contents_are_never_concatenated():

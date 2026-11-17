@@ -14,7 +14,7 @@ import re
 from collections.abc import Mapping
 from types import SimpleNamespace
 
-from generative_redfoot.expressions import evaluate
+from generative_redfoot.expressions import evaluate, stringify
 from generative_redfoot.generation import (
     common_prefix_len,
     insert_cot_messages,
@@ -286,7 +286,7 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
         self._execute_defs(context, verbose)
         parameters = evaluate(self.parameters, context)
         if isinstance(self.input, str):  # a plain string input is a user message added to the context
-            self.add_message(context, evaluate(self.input, context), role='user')
+            self.add_message(context, stringify(evaluate(self.input, context)), role='user')  # its own message
         elif self.input:
             self.input.execute(context, verbose=verbose)
         messages = list(context.get('_') or [])

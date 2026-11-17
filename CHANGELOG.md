@@ -9,7 +9,8 @@
   `message`, model `parameters` and string `input`, `PDF_*`); the legacy `{ $name }` reference still resolves context
   values
 - `defs` is evaluated at the start of the block that declares it (later entries can use earlier ones), and `def` binds
-  the result of any block.  Every block returns its result
+  the result of any block.  Every block returns its result.  A `defs` entry overwrites a variable of the same name
+  (including `-v` and request variables), as in PDL
 - `repeat` accepts `while`, `for` (one iteration per position, binding each name), `maxIterations` and `index`;
   `until` is now a full expression
 - `read` of a filename, a default standard-input prompt, and `multiline` (read to end of file); relative file paths
@@ -25,8 +26,10 @@
   `message` uses a default prompt instead of failing; relative `read` paths resolve from the PDL file's directory
 - **Breaking:** `repeat`'s `until` must evaluate to a boolean, and a `repeat` with none of `until`, `while`, `for`,
   `maxIterations` is an error.  The usual `until: "${ question == 'quit' }"` form is unchanged
-- **Breaking:** nested blocks inherit their container's `role`, and contributions merge into the previous message only
-  when the role matches and both contents are strings.  String items in a `text` block honour its `contribute`
+- **Breaking:** nested blocks inherit their container's `role`, and a text item joins the previous message only when
+  the role matches.  Each block's contribution still reaches a later model as its own message, and a finished
+  list-form `text` still merges neighbouring same-role text messages.  String items in a `text` block honour its
+  `contribute`
 - **Breaking:** stray block keys now fail when the program is built instead of being ignored
 - `def` now binds `text` and `repeat` results too; `defs` is no longer ignored, and `PDLProgram.execute` returns its
   text's result
@@ -35,6 +38,10 @@
 ### Fixed
 - A user turn after an assistant reply is no longer appended to that reply
 - A list-form `text` prints its strings as plain text instead of pretty-printing an empty string
+- A `text` item or string model `input` that is exactly one `${ ... }` is contributed as text, not as a raw int, dict
+  or bytes value
+- A misspelled block nested inside a `defs` entry raises an error instead of being bound as data, and a legacy
+  `{ $name }` in `defs` binds that variable
 
 ## [0.3.0] - 20261116
 
