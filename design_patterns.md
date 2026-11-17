@@ -11,9 +11,9 @@ by PDL programs. This pattern is fundamental to how [Core Concepts](README.md#co
 ## 2. Declarative Composition
 PDL blocks can be composed declaratively, allowing complex workflows to be defined in YAML without complex programming logic. This includes:
 - Model chaining with different LLMs (as shown in [Usage](README.md#usage) examples)
-- Conditional execution through `repeat` blocks
-- Context contribution controls (`contribute: [context, result]`)
-- Variable references using the syntax `{ $variable_name }` for dynamic content binding (as described in [Variable References and Protocol Binding](README.md#variable-references-and-protocol-binding))
+- Loop control through `repeat` blocks (`until` / `while` expressions, `for`, `maxIterations`, `index`)
+- Context contribution controls (`contribute: [context, result]`), with nested blocks inheriting their container's role and same-role string contributions merged into one message
+- Variable expressions using PDL's `${ ... }` syntax (Jinja), with the legacy `{ $variable_name }` form still resolving values from the context (as described in [Variables and Protocol Binding](README.md#variables-and-protocol-binding))
 
 ## 3. Extension-Based Architecture
 The ParseDispatcher system allows for extensions to be registered and resolved based on content. This enables the capabilities described in the [Extensions](README.md#extensions) section, including:
@@ -34,14 +34,14 @@ This pattern encompasses the [Caching](README.md#caching) capabilities described
 This pattern implements the [Service Deployment](README.md#service-deployment) capabilities:
 - **REST API Deployment**: PDL programs can be deployed as web services using FastAPI (as documented in the Service Deployment section)
 - **Request Processing**: Incoming requests are mapped to context variables for use in PDL execution; requests run one at a time in a worker thread, with models loaded once and reused
-- **Protocol Parameter Binding**: Supports variable binding for request body content using `request_body_marker` (as detailed in [Variable References and Protocol Binding](README.md#variable-references-and-protocol-binding))
+- **Protocol Parameter Binding**: Supports variable binding for request body content using `request_body_marker` (as detailed in [Variables and Protocol Binding](README.md#variables-and-protocol-binding))
 - **Multi-format Support**: Handles various content types including text, PDF uploads, and structured data (leveraging the [PDF Reading](README.md#pdf-reading) extension)
 
 ## 6. Multi-Modal Input Processing
 This pattern demonstrates how the various [Extensions](README.md#extensions) work together:
 - **File Upload Support**: Handles PDFs, images, and other document types (using [PDF Reading](README.md#pdf-reading) capabilities)
 - **OCR Processing**: Extracts text from scanned documents (using `PDF_raw_read_ocr` and `PDF_filename_ocr` as described in [PDF Reading](README.md#pdf-reading))
-- **Variable Binding**: Supports dynamic references to context variables using syntax like `{ $file }` for parameter injection (as shown in examples throughout the [Extensions](README.md#extensions) section)
+- **Variable Binding**: Supports dynamic references to context variables with expressions like `${ file }` (the legacy `{ $file }` form still works) for parameter injection, as shown in examples throughout the [Extensions](README.md#extensions) section
 
 ## 7. Model Enhancement Features
 This pattern leverages the advanced model capabilities described in the [Extensions](README.md#extensions) section:

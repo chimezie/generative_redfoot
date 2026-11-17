@@ -24,6 +24,7 @@ libraries ([WordLoom](https://github.com/OoriData/WordLoom)), PDF input, prompt 
 - [Examples](#examples)
 - [Environment variables](#environment-variables)
 - [Development and testing](#development-and-testing)
+- [Upgrading from 0.3](#upgrading-from-03)
 - [Upgrading from 0.2](#upgrading-from-02)
 - [Roadmap](#roadmap)
 
@@ -105,8 +106,8 @@ generative_redfoot -v context_file notes.pdf -v patient 12 document.pdl
 ```
 
 The main argument is a PDL program (a YAML file), possibly with extensions of the language implemented by
-generative_redfoot.  `-v` variables seed the program's context and can be referenced from blocks (for example
-`PDF_filename_txt: { $context_file }`) or used as [Wordloom](#prompt-management-via-wordloom) markers.  With
+generative_redfoot.  `-v` variables seed the program's context and can be referenced from blocks with expressions (for
+example `PDF_filename_txt: ${ context_file }`) or used as [Wordloom](#prompt-management-via-wordloom) markers.  With
 `--verbose`, the model blocks also report how many prompt tokens were sent and how many were already cached.
 
 A minimal chatbot:
@@ -161,16 +162,18 @@ text:
 
 ### Block reference
 
-Every block can also carry `role` (`system`, `user`, `assistant`; models default to `assistant`, everything else to
-`user`), `contribute` (`[context, result]` by default; `[context]` hides output, `[result]` keeps it out of later
-prompts), `def` (store the result in a variable), and `description`.  Messages from consecutive blocks with the same
-role are merged into one when the surrounding `text` block finishes.
+Every block can also carry `role` (`system`, `user`, `assistant`), `contribute` (`[context, result]` by default;
+`[context]` hides output, `[result]` keeps it out of later prompts), `def` (store the result in a variable), `defs`
+(define variables before the block runs) and `description`.  A block without an explicit `role` inherits its
+container's role; model blocks default to `assistant` and the top level starts at `user`.  A contribution is merged
+into the previous message when that message has the same role and both contents are strings; otherwise it starts a new
+message.
 
 | Block | Purpose |
 |---|---|
-| `text` | a string or list of blocks, contributed in order |
-| `read` | read from standard input (`message`) or, when given a `{ $variable }` reference, from the file it names |
-| `repeat` / `until` | loop a body until a variable equals a value: `until: "${ var == 'value' }"` |
+| `text` | a string or list of blocks; its result is its items joined in order |
+| `read` | a file, when a value (for example `${ filename }`) is given, or standard input when it is not; `message` (prompt) and `multiline` (read to end of file) apply to standard input.  Relative file paths resolve from the PDL file's directory |
+| `repeat` | loop a body with `until` / `while` expressions (checked after / before each iteration and required to be boolean), `for: {name: [...]}` (one iteration per position), `maxIterations` and `index` (zero-based); there is no `join` |
 | `model` | evaluate a model on the accumulated context; also names a prefix cache (see [Caching](#caching)). Accepts `parameters`, `input`, `cot_prefix`, `draft_model`, `alpha_one` |
 | `read_from_wordloom` + `items` | prompt text from a [Wordloom](#prompt-management-via-wordloom) file |
 | `PDF_filename_txt`, `PDF_filename_ocr`, `PDF_raw_read_txt`, `PDF_raw_read_ocr` | [PDF reading](#pdf-reading) |
@@ -179,7 +182,9 @@ role are merged into one when the surrounding `text` block finishes.
 | `server` | top-level section that turns the program into a [web service](#service-deployment) |
 
 A model block's `input` may be a block (as in `input: {text: [...]}`) or a plain string, which is added to the context
-as a user message.  `structured_output` blocks (Toolio) were removed in 0.3.
+as a user message.  Every block returns its result; `def` binds it, and `defs` entries are evaluated in order so later
+ones can use earlier ones.  A key a block does not recognise is rejected when the program is built, with a suggestion
+for the closest valid spelling.  `structured_output` blocks (Toolio) were removed in 0.3.
 
 ## PDL compatibility
 
@@ -189,23 +194,24 @@ vice versa.  What to expect:
 
 | PDL feature | Status here |
 |---|---|
-| `description`, `text`, `role`, `contribute`, `def` | supported (see the notes below) |
+| `description`, `text`, `role`, `contribute`, `def`, `defs` | supported (see the notes below) |
 | `model` with `parameters` and `input` | supported, evaluated locally with mlx-lm (no LiteLLM / remote platforms) |
-| `read` | standard input, or a file named by a `{ $variable }` reference.  A literal filename (`read: ./file.txt`) is **not** read yet |
-| `repeat` / `until` | only the form `until: "${ variable == 'value' }"`; no `for`, `while`, `maxIterations`, `join` |
-| `${ ... }` Jinja expressions | **not supported** (outside that one `until` form).  Variables are referenced with the non-standard `{ $variable }` and through Wordloom markers |
-| `defs` | parsed but **not evaluated** |
+| `read` | a filename, or standard input when no value is given.  The legacy `{ $variable }` form resolves a value from the context |
+| `repeat` / `until` | `until` and `while` expressions (must be boolean), `for` lists, `maxIterations` and `index`; no `join` |
+| `${ ... }` Jinja expressions | supported on values written in the PDL file: `text`, `read`, `message`, model `parameters` and string `input`, and the `PDF_*` values.  The legacy `{ $variable }` form still resolves values from the context |
 | `if` / `match`, `lastOf`, `array`, `object`, `data`, `message`, `include` / `import` | not supported |
 | `parser`, `spec`, `retry`, `fallback`, `expectations` | not supported |
 | `code`, `function` / `call`, `map`, aggregators, tracing | not supported |
 
 Behavioral differences worth knowing:
 
-- A nested block does **not** inherit its parent's `role`; set `role` on the block that needs it.
-- Adjacent text contributions are merged into the latest message, and consecutive same-role messages are merged when a
-  `text` block finishes.
-- `def` binds the result of leaf blocks (`read`, `model`, PDF and Wordloom blocks), not of a `text` block.
-- Unknown keys in a block are ignored rather than rejected, so check spelling.
+- A nested block inherits its container's `role` unless it sets `role`; model blocks default to `assistant`, and a
+  model's `input` starts from `user`.
+- A contribution merges into the previous message when the roles match and both contents are strings; otherwise it
+  starts a new message.  (The reference interpreter keeps one message per contribution.)
+- `def` binds the result of any block, including `text` and `repeat`, and `defs` values are evaluated in order.
+- Unknown keys in a block are rejected when the program is built, naming the closest valid spelling.  A block class
+  that declares no keys (an extension written outside this repository) is unchecked.
 - Extensions that are not PDL: `read_from_wordloom`, `PDF_*`, `APSModel`, `content_model`, `cot_prefix`, `draft_model`,
   `alpha_one`, the top-level `cache` and `server` sections.
 
@@ -272,7 +278,7 @@ cache:
 description: cached coder
 text:
   - role: user
-    PDF_raw_read_ocr: { $document_text }
+    PDF_raw_read_ocr: ${ document_text }
     contribute: [context]
   - model: coder_cache
     parameters:
@@ -336,7 +342,7 @@ Server configuration parameters:
 
 The service accepts POST requests with the specified content type and processes the request body using the PDL program. The result is returned as plain text.
 
-The `request_body_marker` is used to bind incoming request content to a context variable that can then be referenced throughout the PDL program using variable syntax like `{ $document_text }`.
+The `request_body_marker` is used to bind incoming request content to a context variable that can then be referenced throughout the PDL program with an expression such as `${ document_text }`.
 
 ### Request handling
 
@@ -356,21 +362,43 @@ curl -X POST -H 'Content-Type: application/pdf' --data-binary @tests/Test.pdf ht
 curl -X POST -F document_text=@tests/Test.pdf http://localhost:8666/metacoder
 ```
 
-### Variable References and Protocol Binding
+### Variables and Protocol Binding
 
-Generative Redfoot supports dynamic variable references using the syntax `{ $variable_name }` to bind values from the execution context. This is particularly useful for:
+The execution context is a dictionary of variables.  A program writes to it with `def` (one value) or `defs` (several,
+evaluated in order at the start of the block that declares them), and reads from it with PDL's `${ ... }` expressions,
+which use Jinja syntax:
 
-- **Service Protocol Parameters**: Binding request body content to variables (e.g., `{ $file }` for file uploads)
-- **Contextual Content**: Referencing values from the execution context in PDL blocks
-- **Parameter Injection**: Dynamically injecting values based on runtime conditions
+- a string containing exactly one `${ ... }` evaluates to that expression's typed value (an int, list, bytes object,
+  and so on);
+- a string that mixes text with `${ ... }` is rendered to text;
+- lists and dicts written in the PDL file are evaluated recursively;
+- the accumulated message list is available as `pdl_context`.
 
-Example of variable reference in PDF processing:
+```yaml
+text:
+  - text: "Hello ${ name }!"
+  - read: "${ filename }"
+  - model: mlx-community/Llama-3.2-3B-Instruct-4bit
+    parameters:
+      max_tokens: "${ budget }"
+```
+
+An undefined variable or a syntax error raises an error naming the expression.  Values that come from the context,
+files, request bodies, model output and Wordloom items are never re-evaluated, so a document that happens to contain
+`${` passes through untouched.
+
+The legacy non-standard `{ $variable_name }` mapping still works wherever a value is resolved from the context.  It is
+particularly useful for service protocol parameters:
+
+Example of a legacy reference in PDF processing:
 ```yaml
 text:
   - text:
     - PDF_raw_read_ocr: { $file }
       contribute: [context]
 ```
+
+New programs should prefer `${ file }`, which is also accepted there.
 
 ## Extensions
 
@@ -400,7 +428,7 @@ as context for a model evaluation:
 description: autocoding_from_pdf
 text:
   - text:
-    - PDF_filename_txt: { $context_file }
+    - PDF_filename_txt: ${ context_file }
       contribute: [context]
     - |
 
@@ -414,7 +442,7 @@ For OCR-based extraction from a file:
 description: autocoding_from_scanned_pdf
 text:
   - text:
-    - PDF_filename_ocr: { $context_file }
+    - PDF_filename_ocr: ${ context_file }
       contribute: [context]
     - |
 
@@ -428,7 +456,7 @@ For processing PDF content provided as raw bytes (useful in service deployment c
 description: pdf_processing_from_upload
 text:
   - text:
-    - PDF_raw_read_txt: { $uploaded_pdf_content }
+    - PDF_raw_read_txt: ${ uploaded_pdf_content }
       contribute: [context]
     - |
 
@@ -633,12 +661,29 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 | Path | Contents |
 |---|---|
 | `src/generative_redfoot/object_pdl_model.py` | PDL blocks, `ParseDispatcher`, `PDLProgram` |
+| `src/generative_redfoot/expressions.py` | `${ ... }` expression evaluation and legacy `{ $name }` resolution |
 | `src/generative_redfoot/extensions/loom.py` | `read_from_wordloom` |
 | `src/generative_redfoot/extensions/mlx.py` | `content_model`, `model`, `APSModel` |
 | `src/generative_redfoot/generation.py` | `MLXBackend` (the only code that imports mlx), `InMemoryBackend` test double, sampling / cache helpers |
 | `src/generative_redfoot/prompts.py` | shared Wordloom loader |
 | `src/generative_redfoot/pdf_text.py` | PDF text / OCR extraction and its result cache |
 | `src/generative_redfoot/cli.py` | CLI, cache bootstrap, `build_app` (FastAPI) |
+
+## Upgrading from 0.3
+
+- A literal `${` in a PDL string is now an expression.  Escape or reword any prompt text that contains it.
+- `read: <string>` now reads that file; leave `read:` empty to read standard input.  Relative `read` paths resolve
+  from the PDL file's directory, not the process directory, and a missing `message` uses a default prompt.
+- `repeat`'s `until` is a full expression and must evaluate to a boolean; the usual
+  `until: "${ question == 'quit' }"` form is unchanged.  `repeat` also accepts `while`, `for`, `maxIterations` and
+  `index`, and a `repeat` with none of them is an error.
+- Nested blocks now inherit their container's `role`, and a contribution merges into the previous message only when
+  the role matches and both contents are strings.  An assistant reply is no longer extended by the next user turn.
+- String items in a `text` block now honour that block's `contribute` setting.
+- `def` now binds the result of any block (not only leaf blocks), `defs` is evaluated, and every block returns its
+  result.  A list-form `text` prints its strings as plain text.
+- Unknown block keys are now rejected when the program is built, with a suggestion for the closest valid spelling;
+  extensions that declare no keys are unchecked.
 
 ## Upgrading from 0.2
 
@@ -654,11 +699,9 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 
 Planned next, in order, all pure-Python and without changes to the mlx layer:
 
-1. **Expressions and variables**: PDL's `${ ... }` Jinja expressions, evaluated `defs`, `def` on every block, `read` of
-   literal filenames relative to the PDL file, and rejection of unknown block keys.
-2. **Structured output and control flow**: `parser` (`json`, `yaml`, `jsonl`, `regex`) with `spec` validation, `retry` /
-   `fallback`, `if` / `then` / `else`, and `repeat` with `for`, `while` and `maxIterations`.
-3. **Composition**: `lastOf`, `data`, `array`, `object`, `include`, and role inheritance.
+1. **Structured output and control flow**: `parser` (`json`, `yaml`, `jsonl`, `regex`) with `spec` validation, `retry` /
+   `fallback`, and `if` / `then` / `else`.
+2. **Composition**: `lastOf`, `data`, `array`, `object`, `include`, and `repeat`'s `join`.
 
 Separately: revisiting [Alpha One](#alpha-one-reasoning) against current alpha-one-mlx.  Not planned: `code` blocks and
 functions (arbitrary code in a served program needs a sandbox first), remote model platforms, tracing UI.

@@ -1,5 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- PDL `${ ... }` expressions (`expressions.py`): a string that is exactly one expression returns its typed value,
+  mixed strings render to text, lists and dicts are evaluated recursively, `pdl_context` exposes the message list, and
+  bad expressions raise `ValueError`s naming them.  Applied to values written in the PDL file (`text`, `read`,
+  `message`, model `parameters` and string `input`, `PDF_*`); the legacy `{ $name }` reference still resolves context
+  values
+- `defs` is evaluated at the start of the block that declares it (later entries can use earlier ones), and `def` binds
+  the result of any block.  Every block returns its result
+- `repeat` accepts `while`, `for` (one iteration per position, binding each name), `maxIterations` and `index`;
+  `until` is now a full expression
+- `read` of a filename, a default standard-input prompt, and `multiline` (read to end of file); relative file paths
+  resolve from the PDL file's directory
+- Role inheritance: nested blocks take their container's role unless they set one; model blocks stay `assistant`, and
+  a model's `input` starts from `user`
+- Unknown block keys are rejected when the program is built, suggesting the closest valid spelling; extension classes
+  that declare no keys are unchecked
+
+### Changed
+- **Breaking:** a literal `${` in a PDL string is now an expression
+- **Breaking:** `read: <string>` now reads that file (it used to fall through to standard input); `read:` without a
+  `message` uses a default prompt instead of failing; relative `read` paths resolve from the PDL file's directory
+- **Breaking:** `repeat`'s `until` must evaluate to a boolean, and a `repeat` with none of `until`, `while`, `for`,
+  `maxIterations` is an error.  The usual `until: "${ question == 'quit' }"` form is unchanged
+- **Breaking:** nested blocks inherit their container's `role`, and contributions merge into the previous message only
+  when the role matches and both contents are strings.  String items in a `text` block honour its `contribute`
+- **Breaking:** stray block keys now fail when the program is built instead of being ignored
+- `def` now binds `text` and `repeat` results too; `defs` is no longer ignored, and `PDLProgram.execute` returns its
+  text's result
+- `jinja2` is a dependency
+
+### Fixed
+- A user turn after an assistant reply is no longer appended to that reply
+- A list-form `text` prints its strings as plain text instead of pretty-printing an empty string
+
 ## [0.3.0] - 20261116
 
 Brings the project current with mlx-lm and WordLoom after a year, and makes it testable off Apple hardware. Verified

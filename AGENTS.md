@@ -8,6 +8,7 @@ mlx-lm, loads prompts from WordLoom TOML files, and can serve a PDL program as a
 ## Layout
 
 - `src/generative_redfoot/object_pdl_model.py`: PDL block classes, `ParseDispatcher`, `PDLProgram`
+- `src/generative_redfoot/expressions.py`: `${ ... }` expression evaluation and legacy `{ $name }` resolution
 - `src/generative_redfoot/prompts.py`: shared WordLoom loader (the only place loom files are opened)
 - `src/generative_redfoot/generation.py`: `MLXBackend` (the only module importing `mlx`/`mlx_lm`), `InMemoryBackend`
   (real fake for tests), `GenerationDefaults`, and pure helpers
