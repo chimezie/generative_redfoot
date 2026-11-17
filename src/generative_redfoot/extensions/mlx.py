@@ -278,7 +278,7 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
         self._execute_defs(context, verbose)
         parameters = evaluate(self.parameters, context)
         if isinstance(self.input, str):  # a plain string input is a user message added to the context
-            context.setdefault('_', []).append({'role': 'user', 'content': evaluate(self.input, context)})
+            self.add_message(context, evaluate(self.input, context), role='user')
         elif self.input:
             self.input.execute(context, verbose=verbose)
         messages = list(context.get('_') or [])

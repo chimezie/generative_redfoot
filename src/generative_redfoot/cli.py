@@ -77,7 +77,9 @@ def prepare_caches(program: PDLProgram, ctx: dict, verbose: bool) -> dict:
     # Tautological substitution, so the marker survives wordloom rendering and the prompt can be cut there
     ctx.update({prefix_marker: f'{{{prefix_marker}}}'} if prefix_marker else {})
     program.cache_lookup = {cache_block['name']: cache_block['file']}
-    PDLText(program.cache[0], program).execute(ctx, verbose=verbose)  # instantiates CachePrep via the dispatcher
+    cache_text = PDLText(program.cache[0], program)  # instantiates CachePrep via the dispatcher
+    cache_text.resolve_roles()  # this text tree is built outside the program, so resolve its roles here too
+    cache_text.execute(ctx, verbose=verbose)
     return program.cache_lookup
 
 

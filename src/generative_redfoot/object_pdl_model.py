@@ -175,21 +175,41 @@ class PDLStructuredBlock:
 
     default_contribution = ['context', 'result']
     default_role = 'user'
+    inherits_role = True  # a model block keeps its own default role instead of inheriting its container's
 
     def _get_common_attributes(self, item: Mapping):
         self.contribute = item.get('contribute', self.default_contribution)
+        self.explicit_role = 'role' in item  # an inherited role must not override an explicit one
         self.role = item.get('role', self.default_role)
         self.var_def = item.get('def')
         self.description = item.get('description')
         self.defs = {k: v for k, v in item.get('defs', {}).items()}
 
+    def resolve_roles(self, inherited_role: str = 'user'):
+        '''Resolve this block's role once, after the tree is built (containers recurse into their children)'''
+        if not self.explicit_role and self.inherits_role:
+            self.role = inherited_role
+
+    def add_message(self, context: dict, content, role: str | None = None):
+        '''
+        Add a contribution to the message list. It merges into the last message when that message has the same role
+        and both contents are strings; anything else becomes a new message.
+        '''
+        role = self.role if role is None else role
+        messages = context.setdefault('_', [])
+        if messages and messages[-1]['role'] == role:
+            last = messages[-1]
+            if isinstance(last.get('content'), str) and isinstance(content, str):
+                last['content'] += content
+                return
+        messages.append({'role': role, 'content': content})
+
     def _handle_execution_contribution(self, content: list | str, context: dict):
         if content:
-            msg = {'role': self.role, 'content': content}
             if 'result' in self.contribute:
                 print(content)
             if 'context' in self.contribute:
-                context.setdefault('_', []).append(msg)
+                self.add_message(context, content)
         if self.var_def:  # `def` binds the result even when it is empty
             logging.debug(f'Defining variable {self.var_def} with value {content}')
             context[self.var_def] = content
@@ -287,6 +307,13 @@ class PDLText(TextCollator, PDLStructuredBlock):
     def __len__(self):
         return len(self.content)
 
+    def resolve_roles(self, inherited_role: str = 'user'):
+        super().resolve_roles(inherited_role)
+        if isinstance(self.content, list):
+            for item in self.content:
+                if isinstance(item, PDLStructuredBlock):
+                    item.resolve_roles(self.role)
+
     def execute(self, context: dict, verbose: bool = False):
         '''Execute the text block and return the joined result of its items'''
         self._execute_defs(context, verbose)
@@ -305,7 +332,6 @@ class PDLText(TextCollator, PDLStructuredBlock):
                     result = item.execute(context, verbose=verbose)  # the child contributes itself to the context
                     if 'result' in getattr(item, 'contribute', []) and result is not None:
                         parts.append(result)  # the return value is only for this block's result
-            self._merge_adjacent_same_role(context)
         result = ''.join(part if isinstance(part, str) else str(part) for part in parts)
         if self.var_def:
             context[self.var_def] = result
@@ -316,24 +342,7 @@ class PDLText(TextCollator, PDLStructuredBlock):
         if 'result' in self.contribute:
             print(text)
         if 'context' in self.contribute:
-            self.merge_content(context, text)
-
-    @staticmethod
-    def _merge_adjacent_same_role(context: dict):
-        merged_context = []
-        for message in context.get('_', []):
-            if merged_context and merged_context[-1]['role'] == message['role']:
-                merged_context[-1]['content'] += message['content']
-            else:
-                merged_context.append(message)
-        context['_'] = merged_context
-
-    def merge_content(self, context, item):
-        messages = context.setdefault('_', [])
-        if messages and [m for m in messages if m['role'] == 'user']:
-            messages[-1]['content'] += item
-        else:
-            messages.append({'role': self.role, 'content': item})
+            self.add_message(context, text)
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLObject):
@@ -432,6 +441,11 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
     def __getitem__(self, index: int):
         return self.body[index]
 
+    def resolve_roles(self, inherited_role: str = 'user'):
+        super().resolve_roles(inherited_role)
+        if isinstance(self.body, PDLStructuredBlock):
+            self.body.resolve_roles(self.role)
+
     def _evaluate_for_items(self, context: dict) -> dict | None:
         '''Evaluate the `for` lists once, before the loop, and require them to be equally long'''
         if self.for_items is None:
@@ -517,6 +531,7 @@ class PDLModel(PDLObject, PDLStructuredBlock):
     '''
 
     default_role = 'assistant'
+    inherits_role = False  # a model block is the assistant unless it says otherwise
     MODEL_KEY = 'model'
 
     def __init__(self, content: Mapping, program):
@@ -535,6 +550,11 @@ class PDLModel(PDLObject, PDLStructuredBlock):
 
     def __repr__(self):
         return f'PDLModel({self.model} [{self.descriptive_text()}])'
+
+    def resolve_roles(self, inherited_role: str = 'user'):
+        super().resolve_roles(inherited_role)
+        if isinstance(self.input, PDLStructuredBlock):
+            self.input.resolve_roles('user')  # a model's input always starts from the user
 
     def execute(self, context: dict, verbose: bool = False):
         self._execute_defs(context, verbose)
@@ -748,9 +768,14 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
         self.defaults = None
         self.cache_lookup = {}
         self.kv_state = None
+        self.resolve_roles()  # the tree is fixed now, so inherit roles once instead of on every run
 
     def __repr__(self):
         return "PDLProgram('[..]')"
+
+    def resolve_roles(self, inherited_role: str = 'user'):
+        super().resolve_roles(inherited_role)
+        self.text.resolve_roles(self.role)
 
     def execute(self, verbose: bool = False):
         if verbose:
