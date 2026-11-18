@@ -745,7 +745,7 @@ class ParseDispatcher:
             return item
         obj = self.build(item, program)
         if obj is None:
-            raise RuntimeError(f'Unknown block type: {item}')
+            raise ValueError(f'Unknown block type: {item}')
         return obj
 
     def build(self, item: Mapping, program: PDLObject) -> PDLObject | None:

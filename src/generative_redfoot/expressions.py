@@ -15,7 +15,7 @@ import json
 import re
 from collections.abc import Mapping
 
-from jinja2 import StrictUndefined, TemplateSyntaxError, Undefined, UndefinedError
+from jinja2 import StrictUndefined, Undefined, UndefinedError
 from jinja2.sandbox import SandboxedEnvironment
 
 EXPR_START = '${'
@@ -69,10 +69,8 @@ def _evaluate_string(value: str, scope: Mapping):
                 raise UndefinedError(str(result))
             return result
         return _ENV.from_string(value).render(jinja_scope)
-    except UndefinedError as exc:
-        raise ValueError(f'Undefined variable in expression {value!r}: {exc}') from exc
-    except TemplateSyntaxError as exc:
-        raise ValueError(f'Syntax error in expression {value!r}: {exc}') from exc
+    except Exception as exc:  # any failure here is the author's expression; Exception excludes KeyboardInterrupt
+        raise ValueError(f'Error evaluating expression {value!r}: {type(exc).__name__}: {exc}') from exc
 
 
 def evaluate(value, scope: Mapping):

@@ -12,6 +12,7 @@ import asyncio
 import logging
 import tempfile
 import time
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -73,14 +74,30 @@ def prepare_caches(program: PDLProgram, ctx: dict, verbose: bool) -> dict:
     '''
     if not program.cache or isinstance(program.cache, str):
         return {}
-    cache_block = program.cache[0]['text'][-1]  # the content_model block is the last item of the cache text
-    prefix_marker = cache_block.get('prefix_marker')
+    shape_error = 'cache must be a list with one mapping whose `text` list ends with a `content_model` block'
+    if not isinstance(program.cache, list) or not program.cache or not isinstance(program.cache[0], Mapping):
+        raise ValueError(shape_error)
+    cache_config = program.cache[0]
+    text_items = cache_config.get('text')
+    if (
+        not isinstance(text_items, list)
+        or not text_items
+        or not isinstance(text_items[-1], Mapping)
+        or 'content_model' not in text_items[-1]
+    ):
+        raise ValueError(shape_error)
+    # Validate the content_model's keys before CachePrep reads its name/file, so a typo gets the useful suggestion
+    validate_block_keys(text_items[-1], CachePrep)
+    validate_block_keys(cache_config, PDLText)  # this text tree is built outside the dispatcher
+    cache_text = PDLText(cache_config, program)  # instantiates CachePrep via the dispatcher
+    cache_text.resolve_roles()  # this text tree is built outside the program, so resolve its roles here too
+    cache_prep = cache_text[-1]  # the content_model block is the last item of the cache text
+    if not isinstance(cache_prep, CachePrep):
+        raise ValueError(shape_error)
+    prefix_marker = cache_prep.prefix_marker
     # Tautological substitution, so the marker survives wordloom rendering and the prompt can be cut there
     ctx.update({prefix_marker: f'{{{prefix_marker}}}'} if prefix_marker else {})
-    program.cache_lookup = {cache_block['name']: cache_block['file']}
-    validate_block_keys(program.cache[0], PDLText)  # this text tree is built outside the dispatcher
-    cache_text = PDLText(program.cache[0], program)  # instantiates CachePrep via the dispatcher
-    cache_text.resolve_roles()  # this text tree is built outside the program, so resolve its roles here too
+    program.cache_lookup = {cache_prep.name: cache_prep.file}
     cache_text.execute(ctx, verbose=verbose)
     return program.cache_lookup
 
@@ -260,7 +277,7 @@ def main(
     try:
         program = make_program(program_yaml, dispatcher, backend, defaults, {}, ctx, base_dir=base_dir)
         cache_lookup = prepare_caches(program, ctx, verbose)
-    except (ValueError, RuntimeError) as e:  # mistakes in the PDL file (unknown keys or blocks, bad cache options)
+    except ValueError as e:  # mistakes in the PDL file (unknown keys or blocks, bad cache options)
         if verbose:
             raise
         raise click.ClickException(f'{pdl_file}: {e}') from e
@@ -268,7 +285,13 @@ def main(
 
     server_config = program_yaml.get('server')
     if not server_config:
-        program.execute(verbose=verbose)
+        try:
+            program.execute(verbose=verbose)
+        except (ValueError, KeyError, FileNotFoundError) as e:  # author mistakes are reported without a traceback
+            if verbose:
+                raise
+            message = e.args[0] if isinstance(e, KeyError) and e.args else e  # KeyError's repr is not helpful here
+            raise click.ClickException(f'{pdl_file}: {message}') from e
         if verbose:
             print(program.evaluation_environment)
         return 0

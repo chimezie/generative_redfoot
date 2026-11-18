@@ -79,7 +79,7 @@ defs:
     - modle: x
 text: "${ s }"
 '''
-    with pytest.raises(RuntimeError, match='Unknown block type'):
+    with pytest.raises(ValueError, match='Unknown block type'):
         program_from(pdl).execute()
 
 

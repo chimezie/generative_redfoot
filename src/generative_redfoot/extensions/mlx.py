@@ -80,6 +80,10 @@ class CachePrep(PDLModel):
 
     def __init__(self, content: Mapping, program: PDLProgram):
         super().__init__(content, program)
+        if 'name' not in content:
+            raise ValueError("content_model is missing the required key 'name'")
+        if 'file' not in content:
+            raise ValueError("content_model is missing the required key 'file'")
         if self.draft_model:
             logger.warning('draft_model is ignored for content_model: prefix caches are built without a draft model')
         self.name = content['name']
