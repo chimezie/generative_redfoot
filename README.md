@@ -172,8 +172,8 @@ messages are merged.
 | Block | Purpose |
 |---|---|
 | `text` | a string or list of blocks; its result is its items joined in order |
-| `read` | a file, when a value (for example `${ filename }`) is given, or standard input when it is not; `message` (prompt) and `multiline` (read to end of file) apply to standard input.  Relative file paths resolve from the PDL file's directory |
-| `repeat` | loop a body with `until` / `while` expressions (checked after / before each iteration and required to be boolean), `for: {name: [...]}` (one iteration per position), `maxIterations` and `index` (zero-based, bound before `while` is checked, so a `while` stop leaves the index of the iteration that did not run); there is no `join` |
+| `read` | a file, when a value (for example `${ filename }`) is given, or standard input when it is not; a written `${ ... }` value must evaluate to a non-empty path, and `read:` with no value is unavailable in a service.  `message` (prompt) and `multiline` (read to end of file) apply to standard input.  Relative file paths resolve from the PDL file's directory |
+| `repeat` | loop a body with `until` / `while` expressions (checked after / before each iteration and required to be boolean), `for: {name: [...]}` (one iteration per position), `maxIterations` and `index` (zero-based, bound before `while` is checked, so a `while` stop leaves the index of the iteration that did not run).  Surrounding whitespace in the conditions is ignored, so YAML `>` / `|` block scalars work; a string or list body is shorthand for a `text:` block.  There is no `join` |
 | `model` | evaluate a model on the accumulated context; also names a prefix cache (see [Caching](#caching)). Accepts `parameters`, `input`, `cot_prefix`, `draft_model`, `alpha_one` |
 | `read_from_wordloom` + `items` | prompt text from a [Wordloom](#prompt-management-via-wordloom) file |
 | `PDF_filename_txt`, `PDF_filename_ocr`, `PDF_raw_read_txt`, `PDF_raw_read_ocr` | [PDF reading](#pdf-reading) |
@@ -197,8 +197,8 @@ vice versa.  What to expect:
 |---|---|
 | `description`, `text`, `role`, `contribute`, `def`, `defs` | supported (see the notes below) |
 | `model` with `parameters` and `input` | supported, evaluated locally with mlx-lm (no LiteLLM / remote platforms) |
-| `read` | a filename, or standard input when no value is given.  The legacy `{ $variable }` form resolves a value from the context |
-| `repeat` / `until` | `until` and `while` expressions (must be boolean), `for` lists, `maxIterations` and `index`; no `join` |
+| `read` | a filename, or standard input when no value is given.  A written `${ ... }` value must evaluate to a non-empty path; standard input is not available in a service.  The legacy `{ $variable }` form resolves a value from the context |
+| `repeat` / `until` | `until` and `while` expressions (must be boolean), `for` lists, `maxIterations` and `index`; conditions may be YAML block scalars, and a string or list body is a `text` block; no `join` |
 | `${ ... }` Jinja expressions | supported on values written in the PDL file: `text`, `read`, `message`, model `parameters` and string `input`, and the `PDF_*` values.  The legacy `{ $variable }` form still resolves values from the context |
 | `if` / `match`, `lastOf`, `array`, `object`, `data`, `message`, `include` / `import` | not supported |
 | `parser`, `spec`, `retry`, `fallback`, `expectations` | not supported |
@@ -302,7 +302,9 @@ Parameters for `content_model`:
 
 The cache holds the prompt up to the `prefix_marker` (the user message is left open, as `mlx_lm.cache_prompt` does).
 When a model block references the cache, only the text after that prefix is sent to the model.  If the program's
-messages do not begin with the cached prefix, a warning is logged and the model runs without the cache.
+messages do not begin with the cached prefix, a warning is logged and the model runs without the cache.  The render
+date is saved with the other template arguments as `date_string`, so a template that embeds today's date (Llama 3.x,
+for example) keeps matching after midnight.  Named caches are re-read from disk on every request.
 
 > **Upgrading:** prefix cache files made by earlier versions lack the metadata needed for this and must be
 > regenerated (a clear error says so).
@@ -351,10 +353,17 @@ The `request_body_marker` is used to bind incoming request content to a context 
 - `POST` to `path` runs the program once.  The body is bound to the `request_body_marker` variable.
 - `multipart/form-data` and `application/x-www-form-urlencoded` posts bind **every** form field to a variable of the
   same name; file parts become text if they decode as UTF-8 and raw bytes otherwise (PDF parts are always bytes, for
-  `PDF_raw_read_*`).  The marker's own field is the request body.
+  `PDF_raw_read_*`).  The marker's own field is the request body and wins for that name.  A form field never
+  overrides a `-v` operator variable or the message list (`_`): such fields are ignored, and their names are logged
+  at WARNING (never their values).
 - If `content_type` is set, other content types get **415**.  Errors while running the program give **500** with the
   message.  The response is the final assistant message as `text/plain`.
-- `-v` variables from the command line are available to every request's program.
+- `-v` variables from the command line are the operator's variables, available to every request's program, and are
+  never overridden by form fields.
+- `read:` with no value has no standard input to read in a service; it fails the request instead of waiting for the
+  keyboard.  A `read:` with a written `${ ... }` value must name a file.
+- `PDF_filename_*` relative paths resolve from the current directory, while `read` relative paths resolve from the
+  PDL file's directory.
 - Requests are processed **one at a time**: MLX generation runs in a single worker thread and further requests wait.
 - Models are loaded once and reused across requests; the prefix cache file is re-read per request.
 
@@ -387,9 +396,9 @@ text:
       max_tokens: "${ budget }"
 ```
 
-An undefined variable or a syntax error raises an error naming the expression.  Values that come from the context,
-files, request bodies, model output and Wordloom items are never re-evaluated, so a document that happens to contain
-`${` passes through untouched.
+An undefined variable, a syntax error or any other failure while evaluating an expression raises a `ValueError` that
+names the expression and the original exception.  Values that come from the context, files, request bodies, model
+output and Wordloom items are never re-evaluated, so a document that happens to contain `${` passes through untouched.
 
 The legacy non-standard `{ $variable_name }` mapping still works wherever a value is resolved from the context.  It is
 particularly useful for service protocol parameters:
@@ -423,7 +432,9 @@ The choice of which extension to use depends on your input format and processing
 Use these when you have a file path available. The `_ocr` variant is for scanned documents, while the `_txt` variant is for documents with selectable text.
 
 **Raw content reading** (`PDF_raw_read_ocr` and `PDF_raw_read_txt`):
-Use these when working with PDF content as raw bytes or when the PDF is provided as part of a web request (e.g., file uploads in the service deployment context).
+Use these when working with PDF content as an upload, `bytes` or `bytearray`, or when the PDF is provided as part of a
+web request (e.g., file uploads in the service deployment context).  A `str` is treated as UTF-8 PDF content, never as
+a filename; to read a path, use `PDF_filename_ocr` or `PDF_filename_txt`.
 
 Here's an example that reads PDF content from a run-time specified filename using direct text extraction and uses it 
 as context for a model evaluation: 
@@ -473,8 +484,10 @@ text:
 
 The enhanced PDF processing includes robust error handling and content validation:
 
-- **File Path Validation**: Checks for existence and validity of PDF file paths
-- **Raw Content Processing**: Handles both file paths and raw PDF byte content
+- **File Path Validation** (`PDF_filename_*`): checks that the path exists and is readable; relative paths resolve
+  from the current directory
+- **Raw Content Processing** (`PDF_raw_read_*`): accepts uploads, `bytes` and `bytearray`; a string is PDF content,
+  not a path
 - **UploadFile Support**: Direct integration with FastAPI's UploadFile objects for web services
 - **Content Type Detection**: Proper handling of different PDF content types
 - **OCR and Text Extraction**: Supports both direct text extraction and OCR processing for scanned documents
@@ -691,9 +704,16 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 - Variables can now be referenced with PDL `${ name }` expressions; the old `{ $name }` form still works.
 - `read: <string>` now reads that file; leave `read:` empty to read standard input.  Relative `read` paths resolve
   from the PDL file's directory, not the process directory, and a missing `message` uses a default prompt.
+- A `${ ... }` value written for `read` must evaluate to a non-empty path; an empty or non-path value is an error.
+  `read:` with no value is unavailable in a service.
+- `PDF_raw_read_*` accept uploads, bytes and bytearray as content and never open a path; a string is PDF content.
+  Use `PDF_filename_*` to read a file.
+- Form fields can no longer override `-v` operator variables; a form field named `_` is ignored.
+- An unrecognised block raises `ValueError` (was `RuntimeError`).
 - `repeat`'s `until` is a full expression and must evaluate to a boolean; the usual
   `until: "${ question == 'quit' }"` form is unchanged.  `repeat` also accepts `while`, `for`, `maxIterations` and
-  `index`, and a `repeat` with none of them is an error.
+  `index`, and a `repeat` with none of them is an error.  Conditions may be YAML block scalars and the body may be a
+  string or list.
 - Nested blocks now inherit their container's `role`.  A text item no longer extends a message of a different role, so
   an assistant reply is no longer extended by the next user turn.
 - A `text` item that is exactly one `${ ... }` contributes its value as text (lists and dicts as JSON).

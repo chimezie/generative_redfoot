@@ -67,7 +67,19 @@ on Apple Silicon (unit, integration, OCR, CLI and service runs). **Breaking chan
 - `jinja2` is a dependency
 - **Breaking:** `content_model`'s `max_kv_size` defaults to none (the cache is not capped; it was 10000), and
   combining it with `kv_bits` is an error, because mlx-lm cannot quantize a size-capped cache
-- The CLI reports mistakes in a PDL file (unknown keys or blocks, bad cache options) without a traceback
+- **Breaking:** form fields never override operator `-v` variables, and a form field named `_` is ignored; the
+  ignored field names are logged at WARNING (never their values)
+- **Breaking:** `PDF_raw_read_*` accept an upload, `bytes` or `bytearray` as PDF content and never open a path; a
+  `str` is UTF-8 PDF content.  `PDF_filename_*` remains the way to read a file
+- **Breaking:** `read` with a written `${ ... }` value must evaluate to a non-empty path (an empty or non-path value
+  raises a `ValueError` naming the expression); `read:` with no value is the only standard-input form, and it is
+  unavailable in a service
+- **Breaking:** an unrecognised block raises `ValueError` (was `RuntimeError`)
+- `until`, `while` and `maxIterations` ignore surrounding whitespace, so YAML block scalars (`>` / `|`) work; a
+  `repeat` body may be a string or list, treated as a `text` block
+- The CLI reports run-phase author mistakes (`ValueError`, `KeyError`, `FileNotFoundError`) as
+  `<pdl file>: <message>` without a traceback, no longer treats `RuntimeError` as an author mistake, and re-raises
+  the original exception with `--verbose`
 
 ### Removed
 - **Breaking:** Toolio integration (`structured_output` blocks)
@@ -86,10 +98,26 @@ on Apple Silicon (unit, integration, OCR, CLI and service runs). **Breaking chan
 - Undeclared dependencies on `fastapi`, `uvicorn`, `python-multipart`; wrong `pyaml` package name
 - A user turn after an assistant reply is no longer appended to that reply
 - A list-form `text` prints its strings as plain text instead of pretty-printing an empty string
+- Every failure while evaluating a `${ ... }` expression is a `ValueError` containing the expression, the original
+  exception type and its message
+- A malformed `cache` section, a missing `content_model` `name` / `file`, or a misspelled cache key (e.g. `nmae:`)
+  raises a clear `ValueError` instead of a bare `KeyError`
+- The WordLoom cache signature prunes hidden directories, `__pycache__` and `node_modules`, stops after 500 files
+  with one process-wide warning, and skips files that vanish mid-walk
+- Prefix caches store the render date as `date_string` in their metadata, so a cache built before midnight still
+  matches a Llama 3.x-style template that embeds today's date
 
 ### Known limitations
 - Alpha One reasoning is carried over unchanged and unverified against current alpha-one-mlx / mlx-lm
 - PDL coverage is a subset (README "PDL compatibility"): no `parser`, `if`, `include`, code blocks or remote models
+- A stuck request blocks the one-at-a-time service; there is no per-request timeout
+- There is no limit on request size or prompt length (the default `content_model` cache is uncapped)
+- Loaded models stay in memory for the life of the process
+- The `eos_token` model parameter is ignored when a model block uses a named prefix cache
+- A model block whose `contribute` omits `context` clears the whole message list (inherited from earlier versions)
+- `PDF_filename_*` relative paths resolve from the current directory, while `read` paths resolve from the PDL
+  file's directory
+- Named prefix caches are re-read from disk on every request
 
 ## [0.2] - 20251119
 
