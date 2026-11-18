@@ -1,0 +1,46 @@
+# A PDF briefing service: POST a PDF, get back a short briefing on it.
+#
+# Exercises: the `server` section, a prefix cache built at startup by `content_model` from WordLoom prompts (cut at a
+# marker, KV-quantized), file inclusion in the WordLoom library, OCR of the request body, and a model block that reuses
+# the cache so only the document is processed per request.  Run it from this directory (see README.md).
+
+server:
+  host: 127.0.0.1
+  port: 8667
+  request_body_marker: document_text   # the request body is bound to this variable (and is the WordLoom marker)
+  path: /brief
+  content_type: application/pdf        # required content type for raw (non-form) request bodies
+  log_level: info
+  log_path: /tmp/pdf_service.log
+
+cache:
+  - text:
+    - role: system
+      read_from_wordloom: briefing.loom.toml   # a bare filename resolves to ./prompts/
+      items: briefing_system
+      contribute: [context]
+    - role: user
+      read_from_wordloom: briefing.loom.toml
+      items: briefing_request                  # ends with the {document_text} marker
+      contribute: [context]
+    - content_model: mlx-community/Llama-3.2-3B-Instruct-4bit
+      name: briefing_cache
+      file: briefing_prompt_cache.safetensors
+      prefix_marker: document_text             # the cache holds everything before this marker
+      kv_bits: 4                               # quantize the cached prefix ...
+      kv_group_size: 64
+      quantized_kv_start: 128                  # ... once it is longer than this many tokens
+
+description: PDF briefing service
+text:
+  - text:
+    - role: user
+      PDF_raw_read_ocr: ${ document_text }     # the request body (PDF bytes), OCR'd
+      contribute: [context]
+    - model: briefing_cache                    # the cache name: its prefix is reused, only the document is sent
+      parameters:
+        max_tokens: 400
+        temperature: 0.3
+        top_p: 0.95
+        top_k: 20
+        min_p: 0.0
