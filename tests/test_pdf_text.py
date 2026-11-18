@@ -61,7 +61,7 @@ def test_pdf_bytes_coercions(tmp_path):
     f.write_bytes(b'%PDF-1.4 data')
     assert PDFRead._pdf_bytes(b'raw') == b'raw'
     assert PDFRead._pdf_bytes(bytearray(b'raw')) == b'raw'
-    assert PDFRead._pdf_bytes(str(f)) == b'%PDF-1.4 data'  # a str naming a file is a path
+    assert PDFRead._pdf_bytes(str(f)) == str(f).encode()  # a str is content, never a path
     assert PDFRead._pdf_bytes('not a path') == b'not a path'
     assert PDFRead._pdf_bytes('%PDF-1.4 inline') == b'%PDF-1.4 inline'  # PDF content, never a path
     assert PDFRead._pdf_bytes(12) == b'12'

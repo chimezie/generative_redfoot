@@ -152,7 +152,21 @@ def build_app(
             except UnicodeDecodeError:
                 logger.debug(f'Request {request_id}: Body is not valid UTF-8; keeping raw bytes (e.g. a PDF)')
 
-        initial_context = {**base_context, **form_data, request_body_marker: body_content}
+        # Request data is untrusted: never let a form field replace an operator variable or the message list, and
+        # log the field names only (a value may be large or sensitive)
+        ignored_fields = [
+            key for key in form_data if key == '_' or (key in base_context and key != request_body_marker)
+        ]
+        if ignored_fields:
+            logger.warning(
+                f'Request {request_id}: Ignoring form fields that would override operator variables or internal '
+                f'state: {ignored_fields}'
+            )
+        initial_context = {
+            **{k: v for k, v in form_data.items() if k not in ignored_fields},
+            **base_context,
+            request_body_marker: body_content,
+        }
         logger.debug(
             f'Request {request_id}: Form data: { ({k: v for k, v in form_data.items() if isinstance(v, str)}) }'
         )
@@ -161,6 +175,7 @@ def build_app(
             request_program = make_program(
                 program_yaml, dispatcher, backend, defaults, cache_lookup, initial_context, base_dir=base_dir
             )
+            request_program.allow_stdin_read = False  # request data must never make the service wait for input
             logger.debug(f'Request {request_id}: Initial context variable names: {list(initial_context)}')
             logger.debug(f'Request {request_id}: Named K/V caches (& corresponding cache file): {cache_lookup}')
             # Model work is blocking; run it off the event loop (one request at a time, in a single worker thread)

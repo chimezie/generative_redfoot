@@ -420,19 +420,33 @@ class PDLRead(PDLObject, PDLStructuredBlock):
                 logging.debug(f'Reading {file_name} from context')
             with open(file_name) as file:
                 content = file.read()
-        else:
+        elif self.read_from is not None:  # a value was written in the PDL file, so it must name a file
             read_from = evaluate(self.read_from, context)
-            if read_from:
-                content = self._read_file(read_from)
+            if not self._is_valid_path(read_from):
+                raise ValueError(f'read {self.read_from!r} evaluated to an empty/invalid path: {read_from!r}')
+            content = self._read_file(read_from)
+        else:  # `read:` with no value is the only case that asks the user for input
+            if not getattr(self.program, 'allow_stdin_read', True):
+                raise ValueError('read with no value needs standard input, which is not available in a service')
+            message = evaluate(self.message, context) if self.message is not None else DEFAULT_READ_MESSAGE
+            if self.multiline:
+                print(message)
+                content = sys.stdin.read()
             else:
-                message = evaluate(self.message, context) if self.message is not None else DEFAULT_READ_MESSAGE
-                if self.multiline:
-                    print(message)
-                    content = sys.stdin.read()
-                else:
-                    content = input(message)
+                content = input(message)
         self._handle_execution_contribution(content, context)
         return content
+
+    @staticmethod
+    def _is_valid_path(value) -> bool:
+        '''Whether an evaluated `read` value can be used as a path (a non-empty string or a path-like object)'''
+        if isinstance(value, str):
+            return bool(value)  # an expression that evaluated to '' is an author mistake, not an empty prompt
+        try:
+            Path(value)
+        except TypeError:
+            return False
+        return True
 
     def _read_file(self, read_from) -> str:
         '''Read a file named in the PDL file (relative paths are relative to the PDL file's directory)'''
@@ -682,14 +696,12 @@ class PDFRead(PDLObject, PDLStructuredBlock):
 
     @staticmethod
     def _pdf_bytes(raw: Any) -> bytes:
-        '''Coerce whatever the context holds (upload, bytes, text, a path) into PDF bytes'''
+        '''
+        Coerce a raw PDF source (an upload, bytes or text) into PDF bytes. Raw modes never open a path: a `str` is
+        always PDF content, so only `PDF_filename_*` may read a file.
+        '''
         if isinstance(raw, UploadFile):
             return raw.file.read()
-        if isinstance(raw, str):
-            # A short string naming an existing file is a path (not PDF content that happens to be a str)
-            if len(raw) <= 1000 and not raw.startswith('%PDF-') and Path(raw).is_file():
-                return Path(raw).read_bytes()
-            return raw.encode('utf-8')
         if isinstance(raw, bytes | bytearray):
             return bytes(raw)
         return str(raw).encode('utf-8')
@@ -831,6 +843,7 @@ class PDLProgram(PDLObject, PDLStructuredBlock):
         self.defaults = None
         self.cache_lookup = {}
         self.kv_state = None
+        self.allow_stdin_read = True  # a service turns this off so `read:` with no value cannot block its worker
         self.resolve_roles()  # the tree is fixed now, so inherit roles once instead of on every run
 
     def __repr__(self):
