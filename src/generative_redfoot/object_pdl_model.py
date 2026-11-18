@@ -481,16 +481,27 @@ class PDLRepeat(PDLObject, PDLStructuredBlock):
 
     def __init__(self, content: Mapping, program):
         self.program = program
-        self.body = self.program.dispatcher.handle(content['repeat'], self.program)
-        self.until = content.get('until')
-        self.while_condition = content.get('while')
+        body = content['repeat']
+        if isinstance(body, str | list):
+            body = {'text': body}  # a bare string or list is shorthand for a `text:` block
+        if not isinstance(body, Mapping):
+            raise ValueError(f'repeat body must be a mapping, a string or a list, got {body!r}')
+        self.body = self.program.dispatcher.handle(body, self.program)
+        # A YAML block scalar keeps its trailing newline; the conditions are whole expressions, so ignore it
+        self.until = self._strip_condition(content.get('until'))
+        self.while_condition = self._strip_condition(content.get('while'))
         self.for_items = content.get('for')
-        self.max_iterations = content.get('maxIterations')
+        self.max_iterations = self._strip_condition(content.get('maxIterations'))
         self.index_name = content.get('index')
         stopping_rules = (self.until, self.while_condition, self.for_items, self.max_iterations)
         if all(rule is None for rule in stopping_rules):
             raise ValueError('repeat requires at least one of until, while, for or maxIterations')
         self._get_common_attributes(content)
+
+    @staticmethod
+    def _strip_condition(value):
+        '''Strip a string condition (`>` / `|` blocks add a trailing newline); leave other values alone'''
+        return value.strip() if isinstance(value, str) else value
 
     def __repr__(self):
         rules = [
