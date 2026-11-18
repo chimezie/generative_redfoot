@@ -7,6 +7,7 @@ Prefix caching follows the mlx-lm convention: the cached prefix is rendered with
 and at evaluation time only the text after that prefix is sent to the model.
 '''
 
+import datetime
 import functools
 import json
 import logging
@@ -58,6 +59,11 @@ def encode_prompt(tokenizer, text: str) -> list[int]:
     '''Tokenize a rendered chat prompt; skip special tokens if the template already supplied the BOS token'''
     bos = getattr(tokenizer, 'bos_token', None)
     return tokenizer.encode(text, add_special_tokens=bos is None or not text.startswith(bos))
+
+
+def today_string() -> str:
+    '''Today's date in the shape chat templates like Llama 3.x expect for their `date_string` variable'''
+    return datetime.date.today().strftime('%d %b %Y')
 
 
 class CachePrep(PDLModel):
@@ -120,7 +126,9 @@ class CachePrep(PDLModel):
             users[0]['content'] = users[0]['content'].split(f'{{{self.prefix_marker}}}')[0]
             if verbose:
                 print(f"Separating at prefix marker: {self.prefix_marker}: '.. {users[0]['content'][-20:]}'")
-        template_kwargs = {}
+        # Pin the date into the cache metadata too: templates that use `date_string` must render the same text after
+        # midnight, or the freshly rendered prompt no longer starts with the stored prefix
+        template_kwargs = {'date_string': today_string()}
         if parameters.get('enable_thinking') is not None:
             template_kwargs['enable_thinking'] = parameters['enable_thinking']
         model, tokenizer = backend.load(self.model, {})
