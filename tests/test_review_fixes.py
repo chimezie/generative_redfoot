@@ -161,3 +161,17 @@ def test_cli_reports_program_mistakes_without_a_traceback(tmp_path, monkeypatch)
     assert result.exit_code == 1
     assert "did you mean 'parameters'?" in result.output
     assert 'Traceback' not in result.output
+
+
+def test_alpha_one_without_the_package_is_a_clear_error(monkeypatch):
+    monkeypatch.setitem(__import__('sys').modules, 'alpha_one_mlx', None)  # makes the import fail
+    pdl = '''
+description: t
+text:
+- text: hi
+  contribute: [context]
+- model: some/model
+  alpha_one: {alpha: 1.4}
+'''
+    with pytest.raises(ValueError, match='alpha-one-mlx'):
+        program_from(pdl).execute()

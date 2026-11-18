@@ -51,7 +51,6 @@ Changelog = 'https://github.com/chimezie/generative_redfoot/blob/main/CHANGELOG.
 [project.optional-dependencies]
 pdf = ['pymupdf']
 gemma_aps = ['nltk']
-alpha_one = ['alpha-one-mlx']
 dev = ['pytest', 'ruff', 'httpx', 'pymupdf']
 
 [tool.pytest.ini_options]

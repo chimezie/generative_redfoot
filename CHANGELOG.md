@@ -85,6 +85,8 @@ on Apple Silicon (unit, integration, OCR, CLI and service runs). **Breaking chan
 - **Breaking:** Toolio integration (`structured_output` blocks)
 - Dependencies on `ogbujipt`, `transformers` (transitive via mlx-lm), `pytest`, `tqdm`
 - Temp-file fallback for opening PDFs (the byte stream is opened with an explicit filetype)
+- The `alpha_one` extra: alpha-one-mlx is not on PyPI, so the extra made the project unresolvable for `uv run` /
+  `uv sync`; install alpha-one-mlx separately to use `alpha_one` blocks
 
 ### Fixed
 - `top_p` was ignored outside Alpha-One generation

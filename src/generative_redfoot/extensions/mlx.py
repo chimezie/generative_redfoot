@@ -340,12 +340,18 @@ class MLXModelEvaluation(MLXModelEvaluationBase):
         Alpha-One reasoning via alpha_one_mlx. Carried over from the previous implementation; revisiting it against
         current alpha_one_mlx / mlx-lm is deferred (it is a separate effort), so it is unverified.
         '''
-        from alpha_one_mlx.models import (  # noqa: PLC0415
-            average_thinking_tokens,
-            get_configuration,
-            get_thinking_template_parser,
-        )
-        from alpha_one_mlx.reasoner import alpha_one  # noqa: PLC0415
+        try:
+            from alpha_one_mlx.models import (  # noqa: PLC0415
+                average_thinking_tokens,
+                get_configuration,
+                get_thinking_template_parser,
+            )
+            from alpha_one_mlx.reasoner import alpha_one  # noqa: PLC0415
+        except ImportError as exc:
+            raise ValueError(
+                'alpha_one needs the alpha-one-mlx package, which is not on PyPI; install it separately with '
+                '`uv pip install git+https://github.com/chimezie/alpha-one-mlx`'
+            ) from exc
 
         parameters = self.parameters if parameters is None else parameters
         model, tokenizer, ctx = self._load(verbose, parameters)

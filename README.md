@@ -69,8 +69,10 @@ on other platforms.)
 uv pip install .                 # core: PDL interpreter, mlx-lm, WordLoom, FastAPI service
 uv pip install '.[pdf]'          # + PDF reading via PyMuPDF (OCR modes also need Tesseract, see below)
 uv pip install '.[gemma_aps]'    # + nltk for the proposition-segmentation model
-uv pip install '.[alpha_one]'    # + Alpha One reasoning
 ```
+
+Alpha One reasoning needs [alpha-one-mlx](https://github.com/chimezie/alpha-one-mlx), which is not on PyPI;
+install it separately with `uv pip install git+https://github.com/chimezie/alpha-one-mlx`.
 
 The OCR modes of [PDF reading](#pdf-reading) need the Tesseract system package; see
 [OCR requires Tesseract](#ocr-requires-tesseract).
@@ -538,7 +540,8 @@ prefix cache with `draft_model` raises an error; use the internal cache (`cache:
 
 [AlphaOne (&alpha;)](https://alphaone-project.github.io/) reasoning modulation can be used with 
 a supported, reasoning model using [Alpha One MLX](https://github.com/chimezie/alpha-one-mlx) via providing
-a `alpha_one` block within a model:
+a `alpha_one` block within a model.  Alpha One MLX is optional and installed separately (see
+[Installation](#installation)); without it, a model block with `alpha_one` fails with an error saying so:
 
 ```yaml
 description: alpha_one_reasoning
