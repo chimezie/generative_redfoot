@@ -24,7 +24,6 @@ libraries ([WordLoom](https://github.com/OoriData/WordLoom)), PDF input, prompt 
 - [Examples](#examples)
 - [Environment variables](#environment-variables)
 - [Development and testing](#development-and-testing)
-- [Upgrading: unreleased changes](#upgrading-unreleased-changes)
 - [Upgrading from 0.2](#upgrading-from-02)
 - [Roadmap](#roadmap)
 
@@ -276,7 +275,6 @@ cache:
       prefix_marker: document_text
       kv_group_size: 64
       kv_bits: 4
-      max_kv_size: 10000
 
 description: cached coder
 text:
@@ -298,7 +296,8 @@ Parameters for `content_model`:
 - `kv_group_size`: Group size for KV cache quantization (default: 64)
 - `kv_bits`: Number of bits for KV cache quantization (default: none, i.e. no quantization)
 - `quantized_kv_start`: When kv_bits is set, start quantizing the KV cache from this step onwards (default: 5000)
-- `max_kv_size`: Maximum key-value cache size (default: 10000)
+- `max_kv_size`: Maximum key-value cache size (default: none, i.e. uncapped).  It cannot be combined with `kv_bits`:
+  mlx-lm cannot quantize a size-capped cache
 - `prefix_marker`: Wordloom marker indicating the end of the common prefix for caching
 
 The cache holds the prompt up to the `prefix_marker` (the user message is left open, as `mlx_lm.cache_prompt` does).
@@ -629,6 +628,9 @@ text:
 
 ## Examples
 
+[`examples/pdf_service/`](examples/pdf_service/) is a complete, runnable service: POST a PDF and get back a briefing.
+It uses WordLoom prompts (with file inclusion), a quantized prefix cache built at startup, and OCR.
+
 Below is an example showing a PDL file constructing message contexts for prompts to chained LLM calls from fragments
 in a [Wordloom](https://github.com/OoriData/WordLoom) 
 library, providing a clean separation of concerns between prompt language management, prompt construction, and 
@@ -674,12 +676,19 @@ See [AGENTS.md](AGENTS.md) for conventions.  Layout:
 | `src/generative_redfoot/pdf_text.py` | PDF text / OCR extraction and its result cache |
 | `src/generative_redfoot/cli.py` | CLI, cache bootstrap, `build_app` (FastAPI) |
 
-## Upgrading: unreleased changes
+## Upgrading from 0.2
 
-These changes follow 0.3.0 on the development branch; they will be folded into the release notes when they ship.
-
-
+- Python 3.12+ and a current mlx-lm (0.32+) are required; Toolio (`structured_output`) is gone.
+- **Regenerate prefix cache files** created by `content_model`; older files lack the metadata the new suffix-only
+  prefix caching needs.
+- Bare Wordloom filenames now resolve under `prompts/`; write `./name.toml` for the old current-directory lookup.
+- `kv_bits` defaults to no quantization (it was 4); the misspelling `kv-bits` still works but warns.
+- `top_p` now applies to normal generation (it was only used by Alpha One).
+- A plain-string `input:` on a model block now works.
+- `content_model`'s `max_kv_size` is no longer 10000 by default (the cache is uncapped), and it cannot be
+  combined with `kv_bits`.
 - A literal `${` in a PDL string is now an expression.  Escape or reword any prompt text that contains it.
+- Variables can now be referenced with PDL `${ name }` expressions; the old `{ $name }` form still works.
 - `read: <string>` now reads that file; leave `read:` empty to read standard input.  Relative `read` paths resolve
   from the PDL file's directory, not the process directory, and a missing `message` uses a default prompt.
 - `repeat`'s `until` is a full expression and must evaluate to a boolean; the usual
@@ -694,16 +703,6 @@ These changes follow 0.3.0 on the development branch; they will be folded into t
   result.  A list-form `text` prints its strings as plain text.
 - Unknown block keys are now rejected when the program is built, with a suggestion for the closest valid spelling;
   extensions that declare no keys are unchecked.
-
-## Upgrading from 0.2
-
-- Python 3.12+ and a current mlx-lm (0.32+) are required; Toolio (`structured_output`) is gone.
-- **Regenerate prefix cache files** created by `content_model`; older files lack the metadata the new suffix-only
-  prefix caching needs.
-- Bare Wordloom filenames now resolve under `prompts/`; write `./name.toml` for the old current-directory lookup.
-- `kv_bits` defaults to no quantization (it was 4); the misspelling `kv-bits` still works but warns.
-- `top_p` now applies to normal generation (it was only used by Alpha One).
-- A plain-string `input:` on a model block now works.
 
 ## Roadmap
 

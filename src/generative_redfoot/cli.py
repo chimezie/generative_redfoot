@@ -242,8 +242,13 @@ def main(
         program_yaml = yaml.safe_load(file)
     base_dir = Path(pdl_file).resolve().parent
     ctx = dict(variables) if variables else {}
-    program = make_program(program_yaml, dispatcher, backend, defaults, {}, ctx, base_dir=base_dir)
-    cache_lookup = prepare_caches(program, ctx, verbose)
+    try:
+        program = make_program(program_yaml, dispatcher, backend, defaults, {}, ctx, base_dir=base_dir)
+        cache_lookup = prepare_caches(program, ctx, verbose)
+    except (ValueError, RuntimeError) as e:  # mistakes in the PDL file (unknown keys or blocks, bad cache options)
+        if verbose:
+            raise
+        raise click.ClickException(f'{pdl_file}: {e}') from e
     program.evaluation_environment = ctx
 
     server_config = program_yaml.get('server')

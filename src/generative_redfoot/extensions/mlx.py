@@ -68,7 +68,8 @@ class CachePrep(PDLModel):
 
     `prefix_marker` names a Wordloom marker; the (single) user message is cut at the first `{marker}`, so the cache
     holds only the part of the prompt common to all requests. Quantization / size options: `kv_bits` (default none),
-    `kv_group_size` (64), `quantized_kv_start` (5000), `max_kv_size` (10000).
+    `kv_group_size` (64), `quantized_kv_start` (5000), `max_kv_size` (default none: the cache is not capped). mlx-lm
+    cannot quantize a size-capped (rotating) cache, so `kv_bits` and `max_kv_size` cannot be combined.
     '''
 
     MODEL_KEY = 'content_model'
@@ -86,10 +87,16 @@ class CachePrep(PDLModel):
         self.file = content['file']
         self.kv_group_size = content.get('kv_group_size', 64)
         self.quantized_kv_start = content.get('quantized_kv_start', 5000)
-        self.max_kv_size = content.get('max_kv_size', 10000)
+        self.max_kv_size = content.get('max_kv_size')  # None: an uncapped cache, which can also be quantized
         if 'kv-bits' in content:  # hyphenated spelling appeared in older example PDL files and was silently ignored
             logger.warning("'kv-bits' is deprecated, use 'kv_bits'")
         self.kv_bits = content.get('kv_bits', content.get('kv-bits'))
+        if self.kv_bits is not None and self.max_kv_size is not None:
+            # A capped cache is a RotatingKVCache, which mlx-lm cannot quantize: prefill would fail part-way through
+            raise ValueError(
+                f'content_model {self.name!r}: kv_bits and max_kv_size cannot be combined (mlx-lm cannot quantize a '
+                'size-capped cache); drop one of them'
+            )
 
     @staticmethod
     def dispatch_check(item: Mapping, program: PDLProgram):
